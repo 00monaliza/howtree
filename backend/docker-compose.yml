@@ -1,0 +1,127 @@
+version: "3.9"
+
+# ================================================================
+# Tree Detection Platform — Full Stack
+# Usage: docker compose up
+# ================================================================
+
+x-common-env: &common-env
+  env_file: .env
+
+services:
+  # ── PostgreSQL + PostGIS ─────────────────────────────────────
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: tree_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-tree_detection}
+      POSTGRES_USER: ${POSTGRES_USER:-tree_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secure_password_here}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tree_app} -d ${POSTGRES_DB:-tree_detection}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── Redis ─────────────────────────────────────────────────────
+  redis:
+    image: redis:7.4-alpine
+    container_name: tree_redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── FastAPI ───────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+    container_name: tree_api
+    restart: unless-stopped
+    <<: *common-env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tree_app}:${POSTGRES_PASSWORD:-secure_password_here}@postgres:5432/${POSTGRES_DB:-tree_detection}
+      SYNC_DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-tree_app}:${POSTGRES_PASSWORD:-secure_password_here}@postgres:5432/${POSTGRES_DB:-tree_detection}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app:ro
+      - tile_cache:/tmp/tree_tiles
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Celery Worker ─────────────────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker
+    container_name: tree_worker
+    restart: unless-stopped
+    <<: *common-env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      SYNC_DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-tree_app}:${POSTGRES_PASSWORD:-secure_password_here}@postgres:5432/${POSTGRES_DB:-tree_detection}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app:ro
+      - tile_cache:/tmp/tree_tiles
+      - model_cache:/root/.deepforest
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
+  # ── Celery Flower (monitoring) ─────────────────────────────────
+  flower:
+    image: mher/flower:2.0
+    container_name: tree_flower
+    restart: unless-stopped
+    command: celery flower --broker=redis://redis:6379/0 --port=5555
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+    profiles:
+      - monitoring
+
+volumes:
+  postgres_data:
+  redis_data:
+  tile_cache:
+  model_cache:

@@ -1,51 +1,83 @@
 # Tree Detection Platform — Progress
 
-## Completed Tasks
+## Frontend — Completed ✅
 
 ### [1/7] Next.js init + shadcn setup + folder structure ✅
-- Next.js 16.2.6 (Turbopack) with TypeScript + Tailwind
-- shadcn/ui components: button, card, badge, separator, progress, skeleton, table, tabs, select, scroll-area, tooltip
-- Dependencies: mapbox-gl, @mapbox/mapbox-gl-draw, recharts, zustand, @tanstack/react-query, @turf/turf, @react-pdf/renderer
-- Dark navy palette (#0f1923) with accent green (#22c55e) configured in globals.css
-- Folder structure: app/{dashboard,analytics,reports}, components/{map,panels,charts,layout,reports}, lib/{api,hooks,store}, types
-
 ### [2/7] MapContainer with Mapbox satellite + bbox draw tool ✅
-- components/map/MapContainer.tsx — Mapbox satellite-streets-v12 style
-- MapboxDraw rectangle selection → bbox stored in Zustand
-- Module-level map registry for external GeoJSON updates
-
 ### [3/7] AnalysisPanel + API integration + WebSocket progress ✅
-- components/panels/AnalysisPanel.tsx
-- POST /analyze → job_id → WebSocket /ws/jobs/{job_id}
-- Live progress bar with streaming messages
-- Results: tree count, density, canopy coverage
-
 ### [4/7] Tree points GeoJSON layer + heatmap toggle ✅
-- Circle layer: color-coded by confidence score (green=high, red=low)
-- Heatmap layer with confidence-weighted density
-- Layer toggle panel (components/panels/LayerToggle.tsx)
-
 ### [5/7] /analytics page with Recharts ✅
-- District bar chart (DistrictBarChart)
-- Density over time line chart (DensityLineChart)
-- Top-10 zones sortable table
-- CSV export button
-
 ### [6/7] PDF report generation ✅
-- @react-pdf/renderer government-format document
-- Executive summary, satellite map placeholder, sub-zone table, confidence distribution bar
-- Dynamic import (ssr: false) to avoid SSR issues with browser-only PDF APIs
-
 ### [7/7] Mobile responsive + dark mode polish ✅
-- Collapsible sidebar on mobile (translate-x slide-in)
-- Backdrop overlay when sidebar open
-- Dark mode locked via `dark` class on `<html>`
+
+Frontend runs at: `npm run dev` → http://localhost:3000
+Set `NEXT_PUBLIC_MAPBOX_TOKEN` in `.env.local`
+
+---
+
+## Backend — Completed ✅
+
+### Architecture: FastAPI + Celery + Redis + PostgreSQL/PostGIS + DeepForest
+
+### Step 1: Folder structure + Docker infrastructure ✅
+- `backend/` inside monorepo
+- Full docker-compose.yml: postgres (PostGIS 16), redis, fastapi, celery worker
+- `docker compose up` starts everything
+
+### Step 2: Core layer ✅
+- Pydantic Settings (config.py)
+- Async SQLAlchemy engine + sync engine for Celery
+- Structured logging (structlog, JSON in prod)
+- WebSocket manager with Redis pub/sub
+
+### Step 3: DB models + Alembic ✅
+- `trees`: PostGIS Point + Polygon, GIST indexes
+- `analysis_jobs`: full job lifecycle
+- `districts`: MultiPolygon with GIST index
+
+### Step 4: Pydantic schemas + API routes ✅
+- POST /api/v1/analyze → 202 Accepted, dispatches Celery task
+- GET /api/v1/jobs/{job_id} → poll status
+- WS /api/v1/jobs/ws/{job_id} → real-time progress stream
+- GET /api/v1/trees/geojson → streaming GeoJSON response
+- GET /api/v1/stats/{district} and /stats/bbox
+
+### Step 5: Map provider abstraction ✅
+- YandexProvider (primary, Kazakhstan coverage)
+- MapboxProvider (fallback)
+- Async TileDownloader with retries (tenacity)
+- bbox → overlapping tile grid (20% overlap)
+
+### Step 6: Detection pipeline ✅
+- DeepForest loaded ONCE at worker process init
+- CPU-only inference (no CUDA dependency)
+- Pixel → geographic coordinate transform
+- IoU-based NMS deduplication (0.3 threshold)
+- Canopy area estimation per detection
+
+### Step 7: Celery tasks ✅
+- `run_analysis_task`: full async pipeline in sync Celery context
+- Redis pub/sub progress relay
+- Batch DB inserts (500 trees/batch)
+- Model warm-up at worker startup via `@worker_process_init`
+
+### Step 8: GIS analytics ✅
+- PostGIS ST_Within spatial queries
+- Streaming GeoJSON (no full-load into memory)
+- District stats via ST_Intersects + ST_Area
+- Confidence distribution binning
+
+### Step 9: Tests ✅
+- 32 unit tests, all passing
+- Coverage: bbox validation, tile grid, coord transform, NMS/IoU, statistics
+
+---
 
 ## Next Steps
-- [ ] Deploy to Vercel (Task 10)
-- [ ] Add Mapbox token to Vercel environment variables
-- [ ] Wire real backend at http://localhost:8000
-- [ ] Replace mock data in /analytics and /reports with live API calls
-
-## Config Required
-Set `NEXT_PUBLIC_MAPBOX_TOKEN` in `.env.local`
+- [ ] Set environment variables in `.env` (copy from `.env.example`)
+- [ ] Set YANDEX_MAPS_API_KEY
+- [ ] Run: `cd backend && docker compose up`
+- [ ] Run Alembic migration: `alembic upgrade head`
+- [ ] Test end-to-end: draw bbox on frontend → analysis runs → trees appear on map
+- [ ] Load district boundaries (GeoJSON → PostGIS import script)
+- [ ] Fine-tune DeepForest if Kazakhstan imagery detection accuracy is low
