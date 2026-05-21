@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { AnalysisPanel } from "@/components/panels/AnalysisPanel";
 import { LayerToggle } from "@/components/panels/LayerToggle";
 import { Skeleton } from "@/components/ui/skeleton";
+import { MapPinned, Satellite, ScanLine } from "lucide-react";
 
 const MapContainer = dynamic(
   () => import("@/components/map/MapContainer").then((m) => m.MapContainer),
@@ -97,9 +98,42 @@ export default function DashboardPage() {
       <div className="flex-1 relative">
         <MapContainer />
 
+        <div className="absolute right-4 top-4 hidden w-72 overflow-hidden rounded border border-border bg-card/90 shadow-xl backdrop-blur md:block">
+          <div className="relative border-b border-border bg-[#091411] p-4">
+            <div className="absolute -right-8 -top-10 h-28 w-28 rounded-full border border-emerald-200/15 bg-[radial-gradient(circle_at_35%_35%,rgba(134,239,172,0.34),rgba(20,83,45,0.24)_42%,transparent_72%)]" />
+            <div className="relative flex items-start gap-3">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded border border-emerald-300/25 bg-emerald-300/10">
+                <Satellite className="h-5 w-5 text-emerald-200" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">Geo workspace</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  Спутниковая подложка, bbox-сетка и слой найденных крон в одном окне.
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 divide-x divide-border">
+            <div className="p-3">
+              <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground">
+                <MapPinned className="h-3.5 w-3.5" />
+                AOI
+              </div>
+              <p className="text-sm font-semibold text-foreground">Astana</p>
+            </div>
+            <div className="p-3">
+              <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground">
+                <ScanLine className="h-3.5 w-3.5" />
+                Mode
+              </div>
+              <p className="text-sm font-semibold text-foreground">BBOX</p>
+            </div>
+          </div>
+        </div>
+
         {/* Floating info bar */}
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-card/90 backdrop-blur border border-border rounded px-3 py-1.5 text-xs font-mono text-muted-foreground pointer-events-none whitespace-nowrap">
-          Draw a rectangle on the map to select an analysis area
+          Зажми и протяни прямоугольник, чтобы выбрать область анализа
         </div>
       </div>
     </div>

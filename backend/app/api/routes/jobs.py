@@ -1,22 +1,42 @@
 """
+GET /jobs — list recent jobs.
 GET /jobs/{job_id} — poll job status.
 WS /ws/jobs/{job_id} — stream live progress.
 """
 from __future__ import annotations
 
 import uuid
+from typing import Annotated, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_async_session
 from app.core.logging import get_logger
 from app.core.websocket_manager import ws_manager
-from app.schemas.jobs import JobStatusResponse
+from app.schemas.jobs import JobListResponse, JobStatusResponse, JobSummary
 from app.services.job_service import JobService
 
 logger = get_logger(__name__)
 router = APIRouter()
+
+
+@router.get(
+    "",
+    response_model=JobListResponse,
+    summary="List recent analysis jobs",
+)
+async def list_jobs(
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    status: Annotated[Optional[str], Query()] = None,
+    session: AsyncSession = Depends(get_async_session),
+) -> JobListResponse:
+    svc = JobService(session)
+    jobs_data = await svc.list_jobs(limit=limit, status_filter=status)
+    return JobListResponse(
+        jobs=[JobSummary(**j) for j in jobs_data],
+        total=len(jobs_data),
+    )
 
 
 @router.get(

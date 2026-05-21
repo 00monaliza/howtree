@@ -5,7 +5,7 @@ Uses streaming response for large datasets.
 from __future__ import annotations
 
 import json
-from typing import Annotated
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
@@ -34,7 +34,7 @@ async def get_trees_geojson(
         ),
     ],
     min_confidence: Annotated[float, Query(ge=0.0, le=1.0)] = 0.0,
-    analysis_id: Annotated[str | None, Query()] = None,
+    analysis_id: Annotated[Optional[str], Query()] = None,
     session: AsyncSession = Depends(get_async_session),
 ) -> StreamingResponse:
     bbox_coords = [float(x) for x in bbox.split(",")]

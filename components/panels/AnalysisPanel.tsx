@@ -1,6 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  type ComponentType,
+  type DragEvent,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -11,36 +18,214 @@ import { api, createJobWebSocket } from "@/lib/api/client";
 import { updateTreeSource } from "@/components/map/MapContainer";
 import type { WsMessage } from "@/types";
 import { area as turfArea, bboxPolygon } from "@turf/turf";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Crosshair,
+  FileImage,
+  Globe2,
+  LocateFixed,
+  MapPinned,
+  Radar,
+  Satellite,
+  UploadCloud,
+  WifiOff,
+  XCircle,
+} from "lucide-react";
+
+type Mode = "bbox" | "upload";
 
 export function AnalysisPanel() {
-  const {
-    selectedBBox,
-    activeJob,
-    jobStatus,
-    treeCount,
-    canopyCoverage,
-    setActiveJob,
-    setJobStatus,
-    setAnalysisResults,
-    resetJob,
-  } = useMapStore();
+  const [mode, setMode] = useState<Mode>("bbox");
 
+  return (
+    <div className="flex flex-col gap-0">
+      <GeoPanelHeader />
+
+      <div className="grid grid-cols-2 gap-1 border-y border-border bg-background/35 p-1">
+        <TabBtn label="Карта" icon={Crosshair} active={mode === "bbox"} onClick={() => setMode("bbox")} />
+        <TabBtn label="Снимок" icon={UploadCloud} active={mode === "upload"} onClick={() => setMode("upload")} />
+      </div>
+
+      <div className="p-4">
+        {mode === "bbox" ? <BBoxPanel /> : <UploadPanel />}
+      </div>
+    </div>
+  );
+}
+
+function TabBtn({
+  label,
+  icon: Icon,
+  active,
+  onClick,
+}: {
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex h-9 items-center justify-center gap-2 rounded text-xs font-semibold transition-colors ${
+        active
+          ? "bg-primary text-primary-foreground"
+          : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+      }`}
+    >
+      <Icon className="h-4 w-4" />
+      {label}
+    </button>
+  );
+}
+
+function GeoPanelHeader() {
+  return (
+    <div className="relative overflow-hidden border-b border-border bg-[#08110f] px-4 py-4">
+      <div className="absolute -right-10 -top-10 h-36 w-36 rounded-full border border-emerald-300/20 bg-[radial-gradient(circle_at_35%_35%,rgba(134,239,172,0.42),rgba(20,83,45,0.38)_34%,rgba(6,78,59,0.18)_52%,transparent_72%)]" />
+      <div className="absolute right-5 top-8 h-24 w-24 rounded-full border border-cyan-200/15" />
+      <div className="relative flex items-start justify-between gap-3">
+        <div>
+          <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-emerald-200/75">
+            <Satellite className="h-3.5 w-3.5" />
+            Geo detection
+          </div>
+          <h2 className="text-xl font-semibold leading-tight text-foreground">
+            Анализ зелёного покрова
+          </h2>
+        </div>
+        <div className="grid h-14 w-14 shrink-0 place-items-center rounded border border-emerald-300/20 bg-emerald-300/10">
+          <Globe2 className="h-7 w-7 text-emerald-200" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Shared progress hook ────────────────────────────────────────────────────────
+
+function useJobProgress() {
+  const { setActiveJob, setJobStatus, setAnalysisResults, resetJob } = useMapStore();
   const [wsMessages, setWsMessages] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => () => {
+    wsRef.current?.close();
+    if (pollRef.current) clearInterval(pollRef.current);
+  }, []);
+
+  const TERMINAL = new Set(["completed", "failed"]);
+
+  const finishJob = useCallback(async (
+    job_id: string,
+    bboxArray: [number, number, number, number],
+    areaSqKm: number,
+    onError: (err: string) => void,
+  ) => {
+    try {
+      const final = await api.getJob(job_id);
+      setJobStatus(final);
+
+      if (final.status === "completed") {
+        const geojson = await api.getTreesGeoJSON(bboxArray);
+        updateTreeSource(geojson, bboxArray);
+        const density = geojson.features.length / (areaSqKm ?? 1);
+        setAnalysisResults(
+          geojson.features.length,
+          Math.round(density * 0.03 * 100) / 100,
+        );
+      } else if (final.status === "failed") {
+        onError(final.error ?? "Анализ завершился с ошибкой");
+      }
+      setIsLoading(false);
+    } catch {
+      setIsLoading(false);
+    }
+  }, [setJobStatus, setAnalysisResults]);
+
+  // Polling-фоллбэк: используется когда WebSocket закрывается до завершения джоба
+  const startPolling = useCallback((
+    job_id: string,
+    bboxArray: [number, number, number, number],
+    areaSqKm: number,
+    onError: (err: string) => void,
+  ) => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    setJobStatus({ status: "queued", progress: 0 });
+    setWsMessages(["Ожидание в очереди..."]);
+
+    pollRef.current = setInterval(async () => {
+      try {
+        const job = await api.getJob(job_id);
+        setJobStatus(job);
+        if (job.stage) setWsMessages([job.stage]);
+
+        if (TERMINAL.has(job.status)) {
+          clearInterval(pollRef.current!);
+          pollRef.current = null;
+          await finishJob(job_id, bboxArray, areaSqKm, onError);
+        }
+      } catch {
+        clearInterval(pollRef.current!);
+        pollRef.current = null;
+        setIsLoading(false);
+      }
+    }, 3000);
+  }, [setJobStatus, finishJob]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const trackJob = useCallback(
+    async (job_id: string, bboxArray: [number, number, number, number], onError: (err: string) => void) => {
+      setActiveJob(job_id);
+      const areaSqKm = turfArea(bboxPolygon(bboxArray)) / 1_000_000;
+
+      const ws = createJobWebSocket(job_id);
+      wsRef.current = ws;
+
+      ws.onmessage = (e) => {
+        const msg: WsMessage = JSON.parse(e.data);
+        setJobStatus({ status: normalizeJobStatus(msg.status), progress: msg.progress });
+        setWsMessages((prev) => [...prev.slice(-4), msg.message]);
+      };
+
+      ws.onclose = async () => {
+        // Если джоб ещё не завершён — переключаемся на polling
+        try {
+          const job = await api.getJob(job_id);
+          if (TERMINAL.has(job.status)) {
+            setJobStatus(job);
+            await finishJob(job_id, bboxArray, areaSqKm, onError);
+          } else {
+            startPolling(job_id, bboxArray, areaSqKm, onError);
+          }
+        } catch {
+          setIsLoading(false);
+        }
+      };
+
+      ws.onerror = () => {
+        startPolling(job_id, bboxArray, areaSqKm, onError);
+      };
+    },
+    [setActiveJob, setJobStatus, finishJob, startPolling],
+  );
+
+  return { isLoading, setIsLoading, wsMessages, setWsMessages, trackJob, resetJob };
+}
+
+// ── BBox analysis panel ─────────────────────────────────────────────────────────
+
+function BBoxPanel() {
+  const { selectedBBox, jobStatus, treeCount, setJobStatus } = useMapStore();
+  const { isLoading, setIsLoading, wsMessages, setWsMessages, trackJob, resetJob } = useJobProgress();
 
   const bboxArray = selectedBBox
-    ? ([
-        selectedBBox.lon1,
-        selectedBBox.lat1,
-        selectedBBox.lon2,
-        selectedBBox.lat2,
-      ] as [number, number, number, number])
+    ? ([selectedBBox.lon1, selectedBBox.lat1, selectedBBox.lon2, selectedBBox.lat2] as [number, number, number, number])
     : null;
 
-  const areaSqKm = bboxArray
-    ? turfArea(bboxPolygon(bboxArray)) / 1_000_000
-    : null;
+  const areaSqKm = bboxArray ? turfArea(bboxPolygon(bboxArray)) / 1_000_000 : null;
 
   async function runAnalysis() {
     if (!bboxArray) return;
@@ -50,84 +235,50 @@ export function AnalysisPanel() {
 
     try {
       const { job_id } = await api.analyze(bboxArray);
-      setActiveJob(job_id);
-
-      const ws = createJobWebSocket(job_id);
-      wsRef.current = ws;
-
-      ws.onmessage = (e) => {
-        const msg: WsMessage = JSON.parse(e.data);
-        setJobStatus({ status: "running", progress: msg.progress });
-        setWsMessages((prev) => [...prev.slice(-4), msg.message]);
-      };
-
-      ws.onclose = async () => {
-        const final = await api.getJob(job_id);
-        setJobStatus(final);
-
-        if (final.status === "completed" && bboxArray) {
-          const geojson = await api.getTreesGeoJSON(bboxArray);
-          updateTreeSource(geojson);
-          const density = geojson.features.length / (areaSqKm ?? 1);
-          setAnalysisResults(
-            geojson.features.length,
-            Math.round(density * 0.03 * 100) / 100
-          );
-        }
-        setIsLoading(false);
-      };
-
-      ws.onerror = () => {
-        setJobStatus({ status: "failed", progress: 0, error: "WebSocket error" });
-        setIsLoading(false);
-      };
+      await trackJob(job_id, bboxArray, (err) => {
+        setJobStatus({ status: "failed", progress: 0, error: formatApiError(err) });
+      });
     } catch (err) {
       console.error(err);
-      setJobStatus({ status: "failed", progress: 0, error: String(err) });
+      setJobStatus({ status: "failed", progress: 0, error: formatApiError(err) });
       setIsLoading(false);
     }
   }
-
-  useEffect(() => {
-    return () => wsRef.current?.close();
-  }, []);
 
   const progress = jobStatus?.progress ?? 0;
   const isDone = jobStatus?.status === "completed";
   const isFailed = jobStatus?.status === "failed";
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      {/* Bbox info */}
+    <div className="flex flex-col gap-4">
+      <ApiRequirementNotice compact={Boolean(selectedBBox)} />
+
       <div>
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-          Selection
+        <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <LocateFixed className="h-3.5 w-3.5" />
+          Зона анализа
         </p>
         {selectedBBox ? (
-          <div className="font-mono text-xs space-y-1 bg-secondary/50 rounded p-2 border border-border">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">SW</span>
-              <span className="text-foreground">
-                {selectedBBox.lat1.toFixed(5)}, {selectedBBox.lon1.toFixed(5)}
-              </span>
+          <div className="space-y-2 rounded border border-emerald-400/20 bg-emerald-400/5 p-3">
+            <div className="grid grid-cols-2 gap-2 font-mono text-xs">
+              <CoordTile label="SW" value={`${selectedBBox.lat1.toFixed(5)}, ${selectedBBox.lon1.toFixed(5)}`} />
+              <CoordTile label="NE" value={`${selectedBBox.lat2.toFixed(5)}, ${selectedBBox.lon2.toFixed(5)}`} />
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">NE</span>
+            <div className="flex items-center justify-between border-t border-border pt-2">
+              <span className="text-xs text-muted-foreground">Площадь</span>
               <span className="text-foreground">
-                {selectedBBox.lat2.toFixed(5)}, {selectedBBox.lon2.toFixed(5)}
-              </span>
-            </div>
-            <div className="flex justify-between pt-1 border-t border-border">
-              <span className="text-muted-foreground">Area</span>
-              <span className="text-foreground">
-                {areaSqKm?.toFixed(2)} km²
+                {areaSqKm?.toFixed(2)} км²
               </span>
             </div>
           </div>
         ) : (
-          <div className="bg-secondary/30 rounded border border-dashed border-border p-3 text-center">
-            <p className="text-xs text-muted-foreground">
-              Draw a rectangle on the map to select an area
+          <div className="rounded border border-dashed border-border bg-secondary/25 p-4 text-center">
+            <div className="mx-auto mb-2 grid h-10 w-10 place-items-center rounded border border-border bg-background/70">
+              <MapPinned className="h-5 w-5 text-primary" />
+            </div>
+            <p className="text-sm font-medium text-foreground">Выдели прямоугольник на карте</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Зажми мышь и протяни рамку по нужной части города.
             </p>
           </div>
         )}
@@ -138,31 +289,22 @@ export function AnalysisPanel() {
         disabled={!selectedBBox || isLoading}
         className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold"
       >
-        {isLoading ? "Analyzing..." : "Run Analysis"}
+        {isLoading
+          ? jobStatus?.status === "queued"
+            ? "⏳ В очереди..."
+            : "Идёт анализ..."
+          : "Запустить анализ"}
       </Button>
 
-      {/* Progress */}
-      {(isLoading || isDone || isFailed) && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">Progress</span>
-            <Badge
-              variant={isDone ? "default" : isFailed ? "destructive" : "secondary"}
-              className="text-xs"
-            >
-              {isDone ? "Complete" : isFailed ? "Failed" : `${progress}%`}
-            </Badge>
-          </div>
-          <Progress value={progress} className="h-1.5" />
-          {wsMessages.length > 0 && (
-            <p className="text-xs text-muted-foreground font-mono truncate">
-              {wsMessages[wsMessages.length - 1]}
-            </p>
-          )}
-        </div>
-      )}
+      <JobProgress
+        isLoading={isLoading}
+        isDone={isDone}
+        isFailed={isFailed}
+        progress={progress}
+        wsMessages={wsMessages}
+        error={jobStatus?.error ?? jobStatus?.error_message ?? null}
+      />
 
-      {/* Results */}
       {isDone && treeCount > 0 && (
         <>
           <Separator />
@@ -173,35 +315,339 @@ export function AnalysisPanel() {
   );
 }
 
+// ── Upload panel ────────────────────────────────────────────────────────────────
+
+function UploadPanel() {
+  const { jobStatus, treeCount, setJobStatus } = useMapStore();
+  const { isLoading, setIsLoading, wsMessages, setWsMessages, trackJob, resetJob } = useJobProgress();
+
+  const [file, setFile] = useState<File | null>(null);
+  const [isGeoTiff, setIsGeoTiff] = useState(false);
+  const [bbox, setBbox] = useState({ lonMin: "", latMin: "", lonMax: "", latMax: "" });
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function handleFileChange(f: File | null) {
+    if (!f) return;
+    setFile(f);
+    const ext = f.name.toLowerCase();
+    setIsGeoTiff(ext.endsWith(".tif") || ext.endsWith(".tiff"));
+  }
+
+  function onDrop(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setDragOver(false);
+    const f = e.dataTransfer.files[0];
+    if (f) handleFileChange(f);
+  }
+
+  const bboxValid = isGeoTiff
+    ? true
+    : bbox.lonMin !== "" && bbox.latMin !== "" && bbox.lonMax !== "" && bbox.latMax !== "";
+
+  async function runUpload() {
+    if (!file) return;
+    setIsLoading(true);
+    setWsMessages([]);
+    resetJob();
+
+    const lonMin = isGeoTiff ? 0 : parseFloat(bbox.lonMin);
+    const latMin = isGeoTiff ? 0 : parseFloat(bbox.latMin);
+    const lonMax = isGeoTiff ? 1 : parseFloat(bbox.lonMax);
+    const latMax = isGeoTiff ? 1 : parseFloat(bbox.latMax);
+
+    try {
+      const { job_id } = await api.uploadImage(file, lonMin, latMin, lonMax, latMax);
+      const bboxArray: [number, number, number, number] = [lonMin, latMin, lonMax, latMax];
+      await trackJob(job_id, bboxArray, (err) => {
+        setJobStatus({ status: "failed", progress: 0, error: formatApiError(err) });
+      });
+    } catch (err) {
+      console.error(err);
+      setJobStatus({ status: "failed", progress: 0, error: formatApiError(err) });
+      setIsLoading(false);
+    }
+  }
+
+  const progress = jobStatus?.progress ?? 0;
+  const isDone = jobStatus?.status === "completed";
+  const isFailed = jobStatus?.status === "failed";
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="rounded border border-cyan-400/20 bg-cyan-400/5 p-3">
+        <div className="flex items-start gap-3">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded border border-cyan-300/25 bg-cyan-300/10">
+            <FileImage className="h-[18px] w-[18px] text-cyan-200" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-foreground">Свой снимок</p>
+            <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+              Этот режим не требует Yandex Static API: модель работает по загруженному изображению.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div
+        onClick={() => fileInputRef.current?.click()}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={onDrop}
+        className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${
+          dragOver
+            ? "border-primary bg-primary/5"
+            : file
+            ? "border-primary/50 bg-primary/5"
+            : "border-border hover:border-muted-foreground/50"
+        }`}
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          accept=".tif,.tiff,.jpg,.jpeg,.png"
+          onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
+        />
+        {file ? (
+          <div>
+            <p className="text-sm font-medium text-foreground truncate">{file.name}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {(file.size / 1024 / 1024).toFixed(1)} MB
+              {isGeoTiff && <span className="ml-2 text-primary">GeoTIFF — границы определяются автоматически</span>}
+            </p>
+          </div>
+        ) : (
+          <div>
+            <p className="text-sm text-muted-foreground">Перетащи изображение сюда или выбери файл</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">GeoTIFF, JPEG, PNG · до 500 MB</p>
+          </div>
+        )}
+      </div>
+
+      {/* BBox inputs — only shown for non-GeoTIFF */}
+      {file && !isGeoTiff && (
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+            Географические границы
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {(["lonMin", "latMin", "lonMax", "latMax"] as const).map((key) => (
+              <div key={key}>
+                <label className="text-xs text-muted-foreground block mb-0.5">
+                  {key === "lonMin" ? "Lon min" : key === "latMin" ? "Lat min" : key === "lonMax" ? "Lon max" : "Lat max"}
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  value={bbox[key]}
+                  onChange={(e) => setBbox((b) => ({ ...b, [key]: e.target.value }))}
+                  className="w-full bg-secondary/50 border border-border rounded px-2 py-1 text-xs font-mono text-foreground focus:outline-none focus:border-primary"
+                  placeholder={key.startsWith("lon") ? "71.430" : "51.180"}
+                />
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground/60 mt-1.5">
+            Подсказка: можно сначала выделить bbox на карте и перенести координаты сюда.
+          </p>
+        </div>
+      )}
+
+      <Button
+        onClick={runUpload}
+        disabled={!file || !bboxValid || isLoading}
+        className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold"
+      >
+        {isLoading ? "Обработка..." : "Найти деревья"}
+      </Button>
+
+      <JobProgress
+        isLoading={isLoading}
+        isDone={isDone}
+        isFailed={isFailed}
+        progress={progress}
+        wsMessages={wsMessages}
+        error={jobStatus?.error ?? jobStatus?.error_message ?? null}
+      />
+
+      {isDone && treeCount > 0 && (
+        <>
+          <Separator />
+          <ZoneStats />
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Shared sub-components ───────────────────────────────────────────────────────
+
+function ApiRequirementNotice({ compact }: { compact?: boolean }) {
+  return (
+    <div className="rounded border border-amber-300/25 bg-amber-300/10 p-3">
+      <div className="flex items-start gap-3">
+        <div className="grid h-9 w-9 shrink-0 place-items-center rounded border border-amber-300/30 bg-amber-300/15">
+          <Satellite className="h-[18px] w-[18px] text-amber-200" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-foreground">Нужен ключ спутниковых снимков</p>
+          <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+            {compact
+              ? "Для анализа с карты backend скачивает тайлы через Yandex Maps Static API."
+              : "Подключи Yandex Maps Static API в кабинете разработчика и добавь ключ в backend/.env."}
+          </p>
+          {!compact && (
+            <code className="mt-2 block rounded border border-border bg-background/80 px-2 py-1.5 text-[11px] text-amber-100">
+              YANDEX_MAPS_API_KEY=...
+            </code>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CoordTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded border border-border bg-background/55 p-2">
+      <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+        {label}
+      </div>
+      <div className="mt-1 truncate text-foreground">{value}</div>
+    </div>
+  );
+}
+
+function JobProgress({
+  isLoading,
+  isDone,
+  isFailed,
+  progress,
+  wsMessages,
+  error,
+}: {
+  isLoading: boolean;
+  isDone: boolean;
+  isFailed: boolean;
+  progress: number;
+  wsMessages: string[];
+  error?: string | null;
+}) {
+  if (!isLoading && !isDone && !isFailed) return null;
+
+  const statusLabel = isDone ? "Готово" : isFailed ? "Ошибка" : `${progress}%`;
+  const latestMessage = wsMessages[wsMessages.length - 1];
+
+  return (
+    <div className="space-y-2 rounded border border-border bg-secondary/30 p-3">
+      <div className="flex items-center justify-between">
+        <span className="flex items-center gap-2 text-xs text-muted-foreground">
+          {isDone ? (
+            <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
+          ) : isFailed ? (
+            <XCircle className="h-3.5 w-3.5 text-destructive" />
+          ) : (
+            <Radar className="h-3.5 w-3.5 text-primary" />
+          )}
+          Статус
+        </span>
+        <Badge
+          variant={isDone ? "default" : isFailed ? "destructive" : "secondary"}
+          className="text-xs"
+        >
+          {statusLabel}
+        </Badge>
+      </div>
+      <Progress value={progress} className="h-1.5" />
+      {latestMessage && !isFailed && (
+        <p className="text-xs text-muted-foreground font-mono truncate">
+          {latestMessage}
+        </p>
+      )}
+      {isFailed && <ApiErrorBlock message={error ?? latestMessage ?? "Не удалось выполнить анализ"} />}
+    </div>
+  );
+}
+
+function ApiErrorBlock({ message }: { message: string }) {
+  const isForbidden =
+    message.includes("403 Forbidden") ||
+    message.includes("HTTP 403");
+  const isMissingProvider =
+    message.includes("No imagery provider configured") ||
+    message.includes("YANDEX_MAPS_API_KEY");
+  const isProviderError = isForbidden || isMissingProvider || message.includes("Static API");
+
+  return (
+    <div className="rounded border border-destructive/30 bg-destructive/10 p-3">
+      <div className="flex items-start gap-2">
+        {isProviderError ? (
+          <WifiOff className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+        ) : (
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+        )}
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-foreground">
+            {isForbidden
+              ? "Ключ imagery отклонён"
+              : isMissingProvider
+              ? "Imagery API не подключён"
+              : "Анализ остановлен"}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            {isForbidden
+              ? "Yandex вернул 403. Проверь, что ключ активирован именно для Static API, ограничения ключа разрешают backend-запросы, и тариф допускает нужный тип карты."
+              : isMissingProvider
+              ? "Для анализа с карты нужен ключ Yandex Maps Static API. После добавления ключа перезапусти backend."
+              : message}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatApiError(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  if (message.includes("No imagery provider configured")) {
+    return "No imagery provider configured. Set YANDEX_MAPS_API_KEY or MAPBOX_TOKEN.";
+  }
+  return message.replace(/^Error:\s*/, "");
+}
+
+function normalizeJobStatus(status: string | undefined) {
+  if (
+    status === "queued" ||
+    status === "downloading_tiles" ||
+    status === "running_detection" ||
+    status === "merging_results" ||
+    status === "storing_results" ||
+    status === "completed" ||
+    status === "failed"
+  ) {
+    return status;
+  }
+  return "running";
+}
+
 function ZoneStats() {
   const { treeCount, canopyCoverage, selectedBBox, jobStatus } = useMapStore();
 
   const bboxArray = selectedBBox
-    ? ([
-        selectedBBox.lon1,
-        selectedBBox.lat1,
-        selectedBBox.lon2,
-        selectedBBox.lat2,
-      ] as [number, number, number, number])
+    ? ([selectedBBox.lon1, selectedBBox.lat1, selectedBBox.lon2, selectedBBox.lat2] as [number, number, number, number])
     : null;
 
-  const areaSqKm = bboxArray
-    ? turfArea(bboxPolygon(bboxArray)) / 1_000_000
-    : 1;
-
+  const areaSqKm = bboxArray ? turfArea(bboxPolygon(bboxArray)) / 1_000_000 : 1;
   const density = Math.round(treeCount / areaSqKm);
   const analysisDate = new Date().toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
+    month: "short", day: "numeric", year: "numeric",
   });
 
   if (jobStatus?.status !== "completed") {
     return (
       <div className="space-y-2">
-        {[1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-12 w-full" />
-        ))}
+        {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
       </div>
     );
   }
@@ -236,14 +682,10 @@ function MetricCard({
     <div className="bg-secondary/50 rounded border border-border p-2.5 flex items-center justify-between">
       <span className="text-xs text-muted-foreground">{label}</span>
       <div className="text-right">
-        <span
-          className={`text-sm font-semibold ${accent ? "text-primary" : "text-foreground"}`}
-        >
+        <span className={`text-sm font-semibold ${accent ? "text-primary" : "text-foreground"}`}>
           {value}
         </span>
-        {unit && (
-          <span className="text-xs text-muted-foreground ml-1">{unit}</span>
-        )}
+        {unit && <span className="text-xs text-muted-foreground ml-1">{unit}</span>}
       </div>
     </div>
   );

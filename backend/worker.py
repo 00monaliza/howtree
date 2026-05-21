@@ -11,11 +11,9 @@ Key design:
 """
 from __future__ import annotations
 
-import os
-
-from celery import Celery
 from celery.signals import worker_process_init
 
+from app.core.celery_app import celery_app
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 
@@ -23,40 +21,24 @@ configure_logging()
 logger = get_logger("worker")
 settings = get_settings()
 
-# ── Celery app ─────────────────────────────────────────────────────────────────
-celery_app = Celery(
-    "tree_detection",
-    broker=settings.celery_broker_url,
-    backend=settings.celery_result_backend,
-)
+# Register tasks explicitly (avoids autodiscovery issues with large ML imports)
+from app.modules.jobs.celery_tasks import run_analysis_task, run_image_analysis_task  # noqa: E402
 
-celery_app.conf.update(
-    task_serializer="json",
-    accept_content=["json"],
-    result_serializer="json",
-    timezone="UTC",
-    enable_utc=True,
-    task_track_started=True,
-    task_acks_late=True,          # Retry on worker crash
-    worker_prefetch_multiplier=1, # Don't grab next task until current finishes
-    task_routes={"app.modules.jobs.celery_tasks.run_analysis_task": {"queue": "analysis"}},
-    worker_max_tasks_per_child=settings.celery_max_tasks_per_child,
-    task_soft_time_limit=settings.celery_task_timeout,
-    task_time_limit=settings.celery_task_timeout + 300,
-    broker_connection_retry_on_startup=True,
-)
-
-# Register the task explicitly (avoids autodiscovery issues with large ML imports)
-from app.modules.jobs.celery_tasks import run_analysis_task  # noqa: E402
-
-celery_app.task(
-    run_analysis_task,
+run_analysis_task = celery_app.task(
     name="app.modules.jobs.celery_tasks.run_analysis_task",
     base=None,
     bind=False,
     acks_late=True,
-    max_retries=0,  # No auto-retry — analysis is expensive and idempotent issues
-)
+    max_retries=0,
+)(run_analysis_task)
+
+run_image_analysis_task = celery_app.task(
+    name="app.modules.jobs.celery_tasks.run_image_analysis_task",
+    base=None,
+    bind=False,
+    acks_late=True,
+    max_retries=0,
+)(run_image_analysis_task)
 
 
 @worker_process_init.connect

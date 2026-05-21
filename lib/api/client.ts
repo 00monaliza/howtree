@@ -1,17 +1,38 @@
-import type { AnalysisJob, JobStatus, TreeGeoJSON, DistrictStats } from "@/types";
+import type { AnalysisJob, BBoxStats, JobListResponse, JobStatus, TreeGeoJSON, DistrictStats } from "@/types";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API = `${BASE}/api/v1`;
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(`${API}${path}`, {
     headers: { "Content-Type": "application/json" },
     ...init,
   });
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`API ${res.status}: ${text}`);
+    throw new Error(await readApiError(res));
   }
   return res.json() as Promise<T>;
+}
+
+async function requestRaw<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API}${path}`, init);
+  if (!res.ok) {
+    throw new Error(await readApiError(res));
+  }
+  return res.json() as Promise<T>;
+}
+
+async function readApiError(res: Response): Promise<string> {
+  const text = await res.text();
+  try {
+    const parsed = JSON.parse(text) as { detail?: unknown; message?: unknown };
+    const detail = parsed.detail ?? parsed.message;
+    if (typeof detail === "string") return `API ${res.status}: ${detail}`;
+    if (detail) return `API ${res.status}: ${JSON.stringify(detail)}`;
+  } catch {
+    // Fall through to the raw response body.
+  }
+  return `API ${res.status}: ${text || res.statusText}`;
 }
 
 export const api = {
@@ -20,6 +41,22 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ bbox }),
     });
+  },
+
+  uploadImage(
+    file: File,
+    lonMin: number,
+    latMin: number,
+    lonMax: number,
+    latMax: number,
+  ): Promise<AnalysisJob> {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("lon_min", String(lonMin));
+    form.append("lat_min", String(latMin));
+    form.append("lon_max", String(lonMax));
+    form.append("lat_max", String(latMax));
+    return requestRaw("/analyze/upload", { method: "POST", body: form });
   },
 
   getJob(jobId: string): Promise<JobStatus> {
@@ -34,9 +71,20 @@ export const api = {
   getDistrictStats(district: string): Promise<DistrictStats> {
     return request(`/stats/${district}`);
   },
+
+  listJobs(limit = 20, status?: string): Promise<JobListResponse> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (status) params.set("status", status);
+    return request(`/jobs?${params}`);
+  },
+
+  getBboxStats(bbox: [number, number, number, number]): Promise<BBoxStats> {
+    const [lon1, lat1, lon2, lat2] = bbox;
+    return request(`/stats/bbox?bbox=${lon1},${lat1},${lon2},${lat2}`);
+  },
 };
 
 export function createJobWebSocket(jobId: string): WebSocket {
-  const wsBase = BASE.replace(/^http/, "ws");
-  return new WebSocket(`${wsBase}/ws/jobs/${jobId}`);
+  const wsBase = API.replace(/^http/, "ws");
+  return new WebSocket(`${wsBase}/jobs/ws/${jobId}`);
 }

@@ -2,8 +2,9 @@
 Map tile downloader.
 
 Implements the MapProvider protocol with:
-- YandexProvider (primary, best Central Asia coverage)
-- MapboxProvider (fallback)
+- EsriProvider (no key, same imagery family as the frontend map)
+- YandexProvider
+- MapboxProvider
 
 Design: each provider is stateless and constructs a URL per TileSpec.
 The downloader handles retries, timeout, and temp file management.
@@ -14,6 +15,7 @@ import asyncio
 import tempfile
 from abc import ABC, abstractmethod
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from typing import Protocol
 
 import httpx
@@ -27,12 +29,47 @@ logger = get_logger(__name__)
 settings = get_settings()
 
 
+def _redact_url_secret(url: str) -> str:
+    parts = urlsplit(url)
+    query = urlencode(
+        [
+            (key, "***" if key.lower() in {"apikey", "key", "access_token"} else value)
+            for key, value in parse_qsl(parts.query, keep_blank_values=True)
+        ]
+    )
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, query, parts.fragment))
+
+
 class MapProvider(Protocol):
     """Protocol defining the interface for satellite tile providers."""
 
     def tile_url(self, tile: TileSpec) -> str:
         """Build the HTTP URL for this tile."""
         ...
+
+
+class EsriProvider:
+    """
+    Esri World Imagery export endpoint. No API key required for this public
+    service, and it lets us request an image by geographic bbox and pixel size.
+    """
+
+    BASE_URL = (
+        "https://server.arcgisonline.com/ArcGIS/rest/services/"
+        "World_Imagery/MapServer/export"
+    )
+
+    def tile_url(self, tile: TileSpec) -> str:
+        bbox = f"{tile.lon_min},{tile.lat_min},{tile.lon_max},{tile.lat_max}"
+        return (
+            f"{self.BASE_URL}"
+            f"?bbox={bbox}"
+            f"&bboxSR=4326"
+            f"&imageSR=4326"
+            f"&size={tile.width_px},{tile.height_px}"
+            f"&format=png"
+            f"&f=image"
+        )
 
 
 class YandexProvider:
@@ -82,15 +119,19 @@ class MapboxProvider:
 
 def get_map_provider() -> MapProvider:
     """Factory — selects provider based on config."""
+    if settings.map_provider == "esri":
+        return EsriProvider()
     if settings.map_provider == "yandex" and settings.yandex_maps_api_key:
         return YandexProvider(settings.yandex_maps_api_key)
-    elif settings.mapbox_token:
+    if settings.map_provider == "mapbox" and settings.mapbox_token:
+        return MapboxProvider(settings.mapbox_token)
+    if settings.map_provider == "yandex" and settings.mapbox_token:
         logger.warning("falling_back_to_mapbox", reason="yandex_key_missing")
         return MapboxProvider(settings.mapbox_token)
-    else:
-        raise RuntimeError(
-            "No map provider configured. Set YANDEX_MAPS_API_KEY or MAPBOX_TOKEN."
-        )
+    raise RuntimeError(
+        "No imagery provider configured. Set MAP_PROVIDER=esri, "
+        "YANDEX_MAPS_API_KEY, or MAPBOX_TOKEN."
+    )
 
 
 class TileDownloader:
@@ -125,7 +166,13 @@ class TileDownloader:
             logger.debug("downloading_tile", url=url[:80])
 
             response = await client.get(url, timeout=self._timeout)
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                raise RuntimeError(
+                    f"Tile provider returned HTTP {exc.response.status_code} for "
+                    f"{_redact_url_secret(str(exc.request.url))}"
+                ) from exc
 
             dest.write_bytes(response.content)
             return dest

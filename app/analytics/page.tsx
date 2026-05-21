@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,42 +12,84 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { DistrictBarChart, DensityLineChart } from "@/components/charts/DistrictBarChart";
+import { Skeleton } from "@/components/ui/skeleton";
+import { api } from "@/lib/api/client";
+import type { JobSummary } from "@/types";
 
-const TOP_ZONES = [
-  { rank: 1, district: "Queens", trees: 156800, density: 820, canopy: "38.4%", status: "high" },
-  { rank: 2, district: "Brooklyn", trees: 124300, density: 980, canopy: "32.1%", status: "high" },
-  { rank: 3, district: "Bronx", trees: 98200, density: 1100, canopy: "28.7%", status: "medium" },
-  { rank: 4, district: "Manhattan", trees: 87420, density: 1240, canopy: "24.2%", status: "medium" },
-  { rank: 5, district: "Staten Is.", trees: 72100, density: 1380, canopy: "42.1%", status: "high" },
-  { rank: 6, district: "Harlem", trees: 52300, density: 920, canopy: "18.9%", status: "low" },
-  { rank: 7, district: "Midtown", trees: 34500, density: 680, canopy: "12.3%", status: "low" },
-  { rank: 8, district: "Flushing", trees: 28900, density: 740, canopy: "22.1%", status: "medium" },
-  { rank: 9, district: "Jamaica", trees: 24100, density: 610, canopy: "19.8%", status: "low" },
-  { rank: 10, district: "Astoria", trees: 21800, density: 580, canopy: "17.4%", status: "low" },
-];
-
-function exportCSV() {
-  const header = "Rank,District,Trees,Density (trees/km²),Canopy Coverage\n";
-  const rows = TOP_ZONES.map(
-    (z) => `${z.rank},${z.district},${z.trees},${z.density},${z.canopy}`
+function exportCSV(jobs: JobSummary[]) {
+  const header = "Job ID,Status,Trees,Canopy (m²),Avg Confidence,Date\n";
+  const rows = jobs.map((j) =>
+    [
+      j.job_id,
+      j.status,
+      j.tree_count ?? "",
+      j.canopy_area_m2 != null ? Math.round(j.canopy_area_m2) : "",
+      j.avg_confidence != null ? (j.avg_confidence * 100).toFixed(1) + "%" : "",
+      j.completed_at ? new Date(j.completed_at).toLocaleDateString() : "",
+    ].join(",")
   ).join("\n");
   const blob = new Blob([header + rows], { type: "text/csv" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "tree-analysis.csv";
+  a.download = "howtree-analyses.csv";
   a.click();
   URL.revokeObjectURL(url);
 }
 
-const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive"> = {
-  high: "default",
-  medium: "secondary",
-  low: "destructive",
-};
+function statusVariant(status: string): "default" | "secondary" | "destructive" {
+  if (status === "completed") return "default";
+  if (status === "failed") return "destructive";
+  return "secondary";
+}
+
+function fmt(n: number | null | undefined, decimals = 0): string {
+  if (n == null) return "—";
+  return n.toLocaleString("en-US", { maximumFractionDigits: decimals });
+}
+
+function SummarySkeleton() {
+  return (
+    <div className="grid grid-cols-4 gap-4">
+      {[0, 1, 2, 3].map((i) => (
+        <Card key={i} className="bg-card border-border">
+          <CardContent className="pt-4 pb-4 space-y-2">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-7 w-16" />
+            <Skeleton className="h-3 w-12" />
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
 
 export default function AnalyticsPage() {
+  const [jobs, setJobs] = useState<JobSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.listJobs(50)
+      .then((res) => setJobs(res.jobs))
+      .catch((e) => setError(String(e)))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const completed = jobs.filter((j) => j.status === "completed");
+  const totalTrees = completed.reduce((s, j) => s + (j.tree_count ?? 0), 0);
+  const totalCanopy = completed.reduce((s, j) => s + (j.canopy_area_m2 ?? 0), 0);
+  const avgConf = completed.length
+    ? completed.reduce((s, j) => s + (j.avg_confidence ?? 0), 0) / completed.length
+    : 0;
+
+  const summaryCards = [
+    { label: "Total Trees Detected", value: fmt(totalTrees), delta: `${completed.length} analyses` },
+    { label: "Total Canopy Area", value: `${fmt(totalCanopy / 10_000, 1)} ha`, delta: `${fmt(totalCanopy, 0)} m²` },
+    { label: "Analyses Run", value: fmt(jobs.length), delta: `${completed.length} completed` },
+    { label: "Avg Confidence", value: `${fmt(avgConf * 100, 1)}%`, delta: completed.length ? "across all jobs" : "no data" },
+  ];
+
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       {/* Header */}
@@ -54,13 +97,14 @@ export default function AnalyticsPage() {
         <div>
           <h1 className="text-xl font-semibold text-foreground">Analytics</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Urban canopy distribution across districts
+            Real-time results from your tree detection analyses
           </p>
         </div>
         <Button
           variant="outline"
           size="sm"
-          onClick={exportCSV}
+          onClick={() => exportCSV(jobs)}
+          disabled={loading || jobs.length === 0}
           className="border-border text-muted-foreground hover:text-foreground"
         >
           <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -71,94 +115,84 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-4 gap-4">
-        {[
-          { label: "Total Trees Detected", value: "756,420", delta: "+12.4%" },
-          { label: "Avg Canopy Coverage", value: "25.6%", delta: "+2.1%" },
-          { label: "Analyses Run", value: "8", delta: "this month" },
-          { label: "Avg Confidence", value: "87.3%", delta: "±2.1%" },
-        ].map(({ label, value, delta }) => (
-          <Card key={label} className="bg-card border-border">
-            <CardContent className="pt-4 pb-4">
-              <p className="text-xs text-muted-foreground mb-1">{label}</p>
-              <p className="text-2xl font-semibold text-foreground tabular-nums">{value}</p>
-              <p className="text-xs text-primary mt-1">{delta}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {loading ? (
+        <SummarySkeleton />
+      ) : (
+        <div className="grid grid-cols-4 gap-4">
+          {summaryCards.map(({ label, value, delta }) => (
+            <Card key={label} className="bg-card border-border">
+              <CardContent className="pt-4 pb-4">
+                <p className="text-xs text-muted-foreground mb-1">{label}</p>
+                <p className="text-2xl font-semibold text-foreground tabular-nums">{value}</p>
+                <p className="text-xs text-primary mt-1">{delta}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
-      {/* Charts row */}
-      <div className="grid grid-cols-2 gap-6">
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold text-foreground">
-              Tree Count by District
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <DistrictBarChart />
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold text-foreground">
-              Density Trend (trees/km²)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <DensityLineChart />
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Top 10 table */}
+      {/* Jobs table */}
       <Card className="bg-card border-border">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold text-foreground">
-            Top 10 Densest Zones
+            Analysis History
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow className="border-border hover:bg-transparent">
-                <TableHead className="text-muted-foreground text-xs w-12">#</TableHead>
-                <TableHead className="text-muted-foreground text-xs">District</TableHead>
-                <TableHead className="text-muted-foreground text-xs text-right">Trees</TableHead>
-                <TableHead className="text-muted-foreground text-xs text-right">Density</TableHead>
-                <TableHead className="text-muted-foreground text-xs text-right">Canopy</TableHead>
-                <TableHead className="text-muted-foreground text-xs text-right">Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {TOP_ZONES.map((zone) => (
-                <TableRow key={zone.district} className="border-border hover:bg-secondary/30">
-                  <TableCell className="text-muted-foreground text-xs font-mono">
-                    {zone.rank}
-                  </TableCell>
-                  <TableCell className="text-foreground text-sm font-medium">
-                    {zone.district}
-                  </TableCell>
-                  <TableCell className="text-right text-sm tabular-nums text-foreground">
-                    {zone.trees.toLocaleString()}
-                  </TableCell>
-                  <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
-                    {zone.density.toLocaleString()}
-                  </TableCell>
-                  <TableCell className="text-right text-sm tabular-nums text-foreground">
-                    {zone.canopy}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Badge variant={STATUS_VARIANT[zone.status]} className="text-xs">
-                      {zone.status}
-                    </Badge>
-                  </TableCell>
+          {error ? (
+            <p className="text-sm text-destructive py-4">Failed to load: {error}</p>
+          ) : loading ? (
+            <div className="space-y-2 py-2">
+              {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-10 w-full" />)}
+            </div>
+          ) : jobs.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">
+              No analyses yet. Run your first detection on the Dashboard.
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow className="border-border hover:bg-transparent">
+                  <TableHead className="text-muted-foreground text-xs">Date</TableHead>
+                  <TableHead className="text-muted-foreground text-xs">Status</TableHead>
+                  <TableHead className="text-muted-foreground text-xs text-right">Trees</TableHead>
+                  <TableHead className="text-muted-foreground text-xs text-right">Canopy</TableHead>
+                  <TableHead className="text-muted-foreground text-xs text-right">Confidence</TableHead>
+                  <TableHead className="text-muted-foreground text-xs">BBox</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {jobs.map((job) => (
+                  <TableRow key={job.job_id} className="border-border hover:bg-secondary/30">
+                    <TableCell className="text-xs text-muted-foreground">
+                      {job.completed_at
+                        ? new Date(job.completed_at).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })
+                        : new Date(job.created_at).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={statusVariant(job.status)} className="text-xs">
+                        {job.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right text-sm tabular-nums text-foreground">
+                      {fmt(job.tree_count)}
+                    </TableCell>
+                    <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
+                      {job.canopy_area_m2 != null ? `${fmt(job.canopy_area_m2 / 10_000, 2)} ha` : "—"}
+                    </TableCell>
+                    <TableCell className="text-right text-sm tabular-nums text-foreground">
+                      {job.avg_confidence != null ? `${fmt(job.avg_confidence * 100, 1)}%` : "—"}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground font-mono">
+                      {job.bbox
+                        ? `${job.bbox[1].toFixed(3)},${job.bbox[0].toFixed(3)} → ${job.bbox[3].toFixed(3)},${job.bbox[2].toFixed(3)}`
+                        : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>

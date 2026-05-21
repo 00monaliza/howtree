@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Optional
 
 from geoalchemy2 import Geometry
 from sqlalchemy import DateTime, Float, Integer, String, Text
@@ -26,7 +27,7 @@ class AnalysisJob(Base):
         String(50), nullable=False, default="queued", index=True
     )
     progress: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    stage: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    stage: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     # Stored as WKB polygon, inserted as WKT
     bbox: Mapped[object] = mapped_column(
@@ -38,19 +39,19 @@ class AnalysisJob(Base):
     map_provider: Mapped[str] = mapped_column(String(50), nullable=False, default="yandex")
 
     # Results
-    tree_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    canopy_area_m2: Mapped[float | None] = mapped_column(Float, nullable=True)
-    avg_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    tree_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    canopy_area_m2: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    avg_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     # Lifecycle timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Failure info
-    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     def __repr__(self) -> str:
         return f"<AnalysisJob {self.id} status={self.status} progress={self.progress}%>"

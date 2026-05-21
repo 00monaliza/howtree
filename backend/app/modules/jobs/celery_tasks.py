@@ -185,6 +185,94 @@ def _store_detections(
         session.commit()
 
 
+def run_image_analysis_task(
+    job_id: str,
+    image_path: str,
+    lon_min: float,
+    lat_min: float,
+    lon_max: float,
+    lat_max: float,
+) -> int:
+    """
+    Image upload analysis task. Not a Celery decorator here — registered in worker.py.
+
+    Returns:
+        Number of trees detected.
+    """
+    from pathlib import Path
+
+    from app.core.database import get_sync_session
+    from app.modules.detection.image_pipeline import process_uploaded_image
+
+    logger.info("image_task_started", job_id=job_id, path=image_path)
+
+    def emit(pct: int, msg: str, status: str = "processing"):
+        publish_progress(settings.redis_url, job_id, pct, msg, status=status)
+        logger.info("progress", job_id=job_id, pct=pct, msg=msg)
+
+    session: Session = get_sync_session()
+    try:
+        _update_job(
+            session, job_id, "running_detection", 5,
+            stage="running_detection",
+            started_at=datetime.now(timezone.utc),
+        )
+        emit(5, "Processing uploaded image")
+
+        def progress_cb(pct: int, msg: str):
+            real_pct = 5 + int(pct * 0.85)
+            _update_job(session, job_id, "running_detection", real_pct, stage="running_detection")
+            emit(real_pct, msg)
+
+        detections = process_uploaded_image(
+            image_path=Path(image_path),
+            lon_min=lon_min,
+            lat_min=lat_min,
+            lon_max=lon_max,
+            lat_max=lat_max,
+            progress_cb=progress_cb,
+        )
+
+        _update_job(session, job_id, "storing_results", 92, stage="storing_results")
+        emit(92, f"Storing {len(detections)} trees in PostGIS")
+
+        _store_detections(session, job_id, detections)
+
+        tree_count = len(detections)
+        total_canopy = sum(d.canopy_area_m2 or 0 for d in detections)
+        avg_conf = (
+            sum(d.confidence for d in detections) / tree_count
+            if tree_count else 0.0
+        )
+
+        _update_job(
+            session, job_id, "completed", 100,
+            stage="completed",
+            tree_count=tree_count,
+            canopy_area_m2=total_canopy,
+            avg_confidence=avg_conf,
+            completed_at=datetime.now(timezone.utc),
+        )
+        emit(100, f"Analysis complete: {tree_count} trees detected", status="completed")
+
+        # Clean up uploaded file
+        try:
+            Path(image_path).unlink(missing_ok=True)
+        except Exception:
+            pass
+
+        logger.info("image_analysis_complete", job_id=job_id, trees=tree_count)
+        return tree_count
+
+    except Exception as exc:
+        logger.error("image_analysis_error", job_id=job_id, error=str(exc), exc_info=True)
+        _mark_job_failed(job_id, str(exc))
+        emit(0, f"Failed: {exc}", status="failed")
+        raise
+    finally:
+        session.close()
+
+
 def _status_for_pct(pct: int) -> str:
     if pct < 35:
         return "downloading_tiles"

@@ -5,6 +5,7 @@ Pre-loaded via migration or management command.
 from __future__ import annotations
 
 import uuid
+from typing import Optional
 
 from geoalchemy2 import Geometry
 from sqlalchemy import Index, String
@@ -22,7 +23,7 @@ class District(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     city: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    code: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     # MultiPolygon boundary in WGS-84
     geometry: Mapped[object] = mapped_column(

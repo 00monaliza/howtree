@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Optional
 
 from geoalchemy2 import Geometry
 from sqlalchemy import DateTime, Float, ForeignKey, Index
@@ -29,7 +30,7 @@ class Tree(Base):
     )
 
     # Detection bounding box (pixel-derived, converted to geo)
-    bbox: Mapped[object | None] = mapped_column(
+    bbox: Mapped[Optional[object]] = mapped_column(
         Geometry(geometry_type="POLYGON", srid=4326), nullable=True
     )
 
@@ -37,7 +38,7 @@ class Tree(Base):
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
 
     # Estimated canopy footprint area in m²
-    canopy_area_m2: Mapped[float | None] = mapped_column(Float, nullable=True)
+    canopy_area_m2: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     # Foreign key to the analysis job that created this detection
     analysis_id: Mapped[uuid.UUID] = mapped_column(

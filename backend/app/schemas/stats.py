@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel
 
@@ -13,7 +14,7 @@ class DistrictStatsResponse(BaseModel):
     canopy_area_m2: float
     canopy_coverage_pct: float
     avg_confidence: float
-    last_analysis: datetime | None = None
+    last_analysis: Optional[datetime] = None
 
 
 class BBoxStatsResponse(BaseModel):

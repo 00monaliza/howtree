@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from pydantic import BaseModel
 
 
 class TreeProperties(BaseModel):
     id: str
     confidence: float
-    canopy_area_m2: float | None
+    canopy_area_m2: Optional[float]
     analysis_id: str
 
 

@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     # ── Imagery ──────────────────────────────────────────────────
     yandex_maps_api_key: str = ""
     mapbox_token: str = ""
-    map_provider: Literal["yandex", "mapbox"] = "yandex"
+    map_provider: Literal["yandex", "mapbox", "esri"] = "esri"
 
     # ── Detection ────────────────────────────────────────────────
     tile_size: int = 400
@@ -70,6 +70,17 @@ class Settings(BaseSettings):
             except json.JSONDecodeError:
                 return [origin.strip() for origin in v.split(",")]
         return v
+
+    @field_validator("yandex_maps_api_key", "mapbox_token", mode="before")
+    @classmethod
+    def normalize_provider_secret(cls, v: str | None) -> str:
+        if not v:
+            return ""
+        value = v.strip()
+        lowered = value.lower()
+        if lowered.startswith("your_") or lowered in {"change-me", "changeme"}:
+            return ""
+        return value
 
     @property
     def is_production(self) -> bool:
