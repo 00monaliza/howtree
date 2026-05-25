@@ -6,6 +6,7 @@ import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { AnalysisPanel } from "@/components/panels/AnalysisPanel";
 import { LayerToggle } from "@/components/panels/LayerToggle";
+import { AssistantPanel } from "@/components/assistant/AssistantPanel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MapPinned, Satellite, ScanLine } from "lucide-react";
 
@@ -40,7 +41,7 @@ export default function DashboardPage() {
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         } transition-transform duration-200 absolute lg:relative z-10 h-full w-[320px] shrink-0 border-r border-border bg-card flex flex-col overflow-y-auto shadow-xl lg:shadow-none lg:translate-x-0`}
       >
-        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between shrink-0">
           <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
             Analysis Control
           </h2>
@@ -86,7 +87,7 @@ export default function DashboardPage() {
         </div>
       </aside>
 
-      {/* Backdrop for mobile sidebar */}
+      {/* Backdrop for mobile */}
       {sidebarOpen && (
         <div
           className="lg:hidden absolute inset-0 bg-black/50 z-[5]"
@@ -136,6 +137,9 @@ export default function DashboardPage() {
           Зажми и протяни прямоугольник, чтобы выбрать область анализа
         </div>
       </div>
+
+      {/* Floating AI Assistant */}
+      <AssistantPanel />
     </div>
   );
 }

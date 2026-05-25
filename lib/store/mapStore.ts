@@ -1,6 +1,11 @@
 import { create } from "zustand";
 import type { BBox, DistrictStats, JobStatus, MapLayer } from "@/types";
 
+interface MapViewState {
+  center: [number, number];
+  zoom: number;
+}
+
 interface MapState {
   selectedBBox: BBox | null;
   activeJob: string | null;
@@ -9,6 +14,7 @@ interface MapState {
   districtStats: DistrictStats | null;
   treeCount: number;
   canopyCoverage: number;
+  mapView: MapViewState;
 
   setSelectedBBox: (bbox: BBox | null) => void;
   setActiveJob: (jobId: string | null) => void;
@@ -17,6 +23,7 @@ interface MapState {
   setDistrictStats: (stats: DistrictStats) => void;
   setAnalysisResults: (count: number, coverage: number) => void;
   resetJob: () => void;
+  setMapView: (center: [number, number], zoom: number) => void;
 }
 
 export const useMapStore = create<MapState>((set) => ({
@@ -27,6 +34,10 @@ export const useMapStore = create<MapState>((set) => ({
   districtStats: null,
   treeCount: 0,
   canopyCoverage: 0,
+  mapView: {
+    center: [71.43, 51.18], // Астана по умолчанию
+    zoom: 12,
+  },
 
   setSelectedBBox: (bbox) => set({ selectedBBox: bbox }),
   setActiveJob: (jobId) => set({ activeJob: jobId }),
@@ -41,4 +52,5 @@ export const useMapStore = create<MapState>((set) => ({
   setAnalysisResults: (count, coverage) =>
     set({ treeCount: count, canopyCoverage: coverage }),
   resetJob: () => set({ activeJob: null, jobStatus: null }),
+  setMapView: (center, zoom) => set({ mapView: { center, zoom } }),
 }));

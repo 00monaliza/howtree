@@ -74,7 +74,6 @@ export function MapContainer() {
       const src = map.getSource("trees") as maplibregl.GeoJSONSource | undefined;
       src?.setData(geojson);
 
-      // Restore sidebar count from the most recent completed job
       const { jobs } = await api.listJobs(1, "completed");
       if (jobs[0]?.tree_count) {
         setAnalysisResults(jobs[0].tree_count, 0);
@@ -88,16 +87,26 @@ export function MapContainer() {
   const initMap = useCallback(() => {
     if (!containerRef.current || mapRef.current) return;
 
+    const { mapView } = useMapStore.getState();
+
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: SATELLITE_STYLE,
-      center: [71.43, 51.18],
-      zoom: 11,
+      center: mapView.center,
+      zoom: mapView.zoom,
       attributionControl: { compact: true },
     });
 
     map.addControl(new maplibregl.NavigationControl(), "top-right");
     map.addControl(new maplibregl.ScaleControl(), "bottom-right");
+
+    map.on("moveend", () => {
+      const center = map.getCenter();
+      useMapStore.getState().setMapView(
+        [center.lng, center.lat],
+        map.getZoom()
+      );
+    });
 
     map.on("load", () => {
       addSelectionLayer(map);
@@ -135,9 +144,9 @@ export function MapContainer() {
         .setLngLat([lng, lat])
         .setHTML(
           `<div style="font-family:sans-serif;font-size:12px;line-height:1.6;color:#e2e8f0;background:#1e293b;padding:8px 10px;border-radius:6px;margin:-10px -15px -12px">
-            <div style="font-weight:600;margin-bottom:4px;color:#22c55e">Tree Detection</div>
-            <div>Confidence: <strong>${confidencePct}%</strong></div>
-            <div>Canopy: <strong>${canopyText}</strong></div>
+            <div style="font-weight:600;margin-bottom:4px;color:#22c55e">Дерево</div>
+            <div>Уверенность: <strong>${confidencePct}%</strong></div>
+            <div>Крона: <strong>${canopyText}</strong></div>
             <div style="color:#64748b;font-size:11px;margin-top:4px">${lat.toFixed(5)}, ${lng.toFixed(5)}</div>
           </div>`
         )
@@ -281,11 +290,10 @@ export function MapContainer() {
         <button
           onClick={() => setSelectMode((v) => !v)}
           title={selectMode ? "Режим выделения (перетащи чтобы выбрать зону)" : "Включить выделение"}
-          className={`w-9 h-9 rounded flex items-center justify-center text-base transition-colors shadow-md border ${
-            selectMode
+          className={`w-9 h-9 rounded flex items-center justify-center text-base transition-colors shadow-md border ${selectMode
               ? "bg-primary text-primary-foreground border-primary"
               : "bg-card text-muted-foreground border-border hover:text-foreground"
-          }`}
+            }`}
         >
           ⬚
         </button>
