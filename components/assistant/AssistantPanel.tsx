@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useTranslations } from "next-intl";
 import {
   Bot, User, Send, Loader2, TreePine,
   BarChart3, HelpCircle, Leaf, X, MessageCircle,
@@ -12,20 +13,22 @@ interface Message {
   content: string;
 }
 
-const QUICK_PROMPTS = [
-  { icon: BarChart3, label: "Объясни результаты",     text: "Объясни результаты последнего анализа" },
-  { icon: TreePine,  label: "Что такое confidence?",  text: "Что означает уверенность модели и как её интерпретировать?" },
-  { icon: Leaf,      label: "Как работает детекция?", text: "Как платформа обнаруживает деревья на снимках?" },
-  { icon: HelpCircle,label: "Ограничения модели",     text: "Какие у модели ограничения и насколько точны результаты?" },
-];
-
 export function AssistantPanel() {
   const { treeCount, canopyCoverage, jobStatus } = useMapStore();
+  const t = useTranslations("assistant");
+
+  const QUICK_PROMPTS = [
+    { icon: BarChart3, label: t("quickExplainLabel"),    text: t("quickExplainText") },
+    { icon: TreePine,  label: t("quickConfidenceLabel"), text: t("quickConfidenceText") },
+    { icon: Leaf,      label: t("quickDetectionLabel"),  text: t("quickDetectionText") },
+    { icon: HelpCircle,label: t("quickLimitsLabel"),     text: t("quickLimitsText") },
+  ];
+
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      content: "Привет! Я AI-ассистент HowTree. Могу объяснить результаты анализа или ответить на вопросы об экологии и озеленении.",
+      content: t("greeting"),
     },
   ]);
   const [input, setInput] = useState("");
@@ -72,14 +75,14 @@ export function AssistantPanel() {
       } catch {
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: "Ошибка соединения с бэкендом." },
+          { role: "assistant", content: t("connectionError") },
         ]);
       } finally {
         setIsLoading(false);
         inputRef.current?.focus();
       }
     },
-    [messages, isLoading, analysisContext],
+    [messages, isLoading, analysisContext, t],
   );
 
   return (
@@ -88,7 +91,7 @@ export function AssistantPanel() {
       <button
         onClick={() => setIsOpen((v) => !v)}
         className="fixed bottom-6 left-[336px] z-50 w-12 h-12 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg flex items-center justify-center transition-all duration-200"
-        aria-label="AI-ассистент"
+        aria-label={t("title")}
       >
         {isOpen ? <X className="w-5 h-5" /> : <MessageCircle className="w-5 h-5" />}
       </button>
@@ -108,7 +111,7 @@ export function AssistantPanel() {
             <Bot className="w-3.5 h-3.5 text-white" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold leading-none text-foreground">AI-ассистент</p>
+            <p className="text-xs font-semibold leading-none text-foreground">{t("title")}</p>
             <p className="text-[10px] text-muted-foreground mt-0.5">Claude Haiku · HowTree</p>
           </div>
           <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
@@ -118,8 +121,8 @@ export function AssistantPanel() {
         {analysisContext && (
           <div className="mx-3 mt-2 px-3 py-1.5 rounded border border-emerald-800/60 bg-emerald-950/40 shrink-0">
             <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-emerald-300">
-              <span>🌳 {treeCount.toLocaleString()} деревьев</span>
-              <span>🌿 {canopyCoverage}% покрытие</span>
+              <span>🌳 {treeCount.toLocaleString()} {t("trees")}</span>
+              <span>🌿 {canopyCoverage}% {t("coverage")}</span>
             </div>
           </div>
         )}
@@ -172,7 +175,7 @@ export function AssistantPanel() {
         {/* Quick prompts */}
         {messages.length === 1 && (
           <div className="px-3 pb-2 shrink-0">
-            <p className="text-[10px] text-muted-foreground mb-1.5">Быстрые вопросы:</p>
+            <p className="text-[10px] text-muted-foreground mb-1.5">{t("quickQuestions")}</p>
             <div className="grid grid-cols-2 gap-1">
               {QUICK_PROMPTS.map(({ icon: Icon, label, text }) => (
                 <button
@@ -202,7 +205,7 @@ export function AssistantPanel() {
                   sendMessage(input);
                 }
               }}
-              placeholder="Спросите что-нибудь..."
+              placeholder={t("placeholder")}
               disabled={isLoading}
               className="flex-1 min-w-0 bg-secondary border border-border rounded-lg px-3 py-1.5 text-[12px] text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary transition-colors disabled:opacity-50"
             />

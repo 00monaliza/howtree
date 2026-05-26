@@ -1,24 +1,26 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useMapStore } from "@/lib/store/mapStore";
 import type { MapLayer } from "@/types";
 
-const LAYERS: { id: MapLayer; label: string; icon: string }[] = [
-  { id: "points", label: "Tree Points", icon: "●" },
-  { id: "heatmap", label: "Heatmap", icon: "◉" },
-  { id: "districts", label: "Districts", icon: "▦" },
+const LAYER_IDS: { id: MapLayer; icon: string }[] = [
+  { id: "points", icon: "●" },
+  { id: "heatmap", icon: "◉" },
+  { id: "districts", icon: "▦" },
 ];
 
 export function LayerToggle() {
   const { activeLayers, toggleLayer } = useMapStore();
+  const t = useTranslations("layers");
 
   return (
     <div>
       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-4">
-        Layers
+        {t("title")}
       </p>
       <div className="px-4 space-y-1">
-        {LAYERS.map(({ id, label, icon }) => {
+        {LAYER_IDS.map(({ id, icon }) => {
           const active = activeLayers.has(id);
           return (
             <button
@@ -31,7 +33,7 @@ export function LayerToggle() {
               }`}
             >
               <span className="text-base leading-none">{icon}</span>
-              <span className="font-medium">{label}</span>
+              <span className="font-medium">{t(id)}</span>
               <span
                 className={`ml-auto w-1.5 h-1.5 rounded-full ${
                   active ? "bg-primary" : "bg-border"
