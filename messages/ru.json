@@ -49,13 +49,22 @@
     "detected": "обнаружено",
     "ofArea": "площади",
     "treesPerKm": "дер/км²",
-    "geoDetection": "Гео-обнаружение"
+    "geoDetection": "Гео-обнаружение",
+    "tabCoords": "Координаты",
+    "applyToMap": "Показать на карте",
+    "coordValidationLon": "Должно быть от –180 до 180",
+    "coordValidationLat": "Должно быть от –90 до 90",
+    "coordValidationMinMax": "Мин должен быть меньше макс",
+    "fileTooLarge": "Файл превышает 50 МБ",
+    "imagePreview": "Предпросмотр"
   },
   "layers": {
     "title": "Слои",
     "points": "Точки деревьев",
     "heatmap": "Тепловая карта",
-    "districts": "Районы"
+    "districts": "Районы",
+    "tileSource": "Источник тайлов",
+    "mapboxTokenRequired": "Укажите NEXT_PUBLIC_MAPBOX_TOKEN для Mapbox"
   },
   "dashboard": {
     "workspaceTitle": "Geo workspace",

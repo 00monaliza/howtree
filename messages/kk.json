@@ -49,13 +49,22 @@
     "detected": "анықталды",
     "ofArea": "аудан",
     "treesPerKm": "ағаш/км²",
-    "geoDetection": "Гео-анықтау"
+    "geoDetection": "Гео-анықтау",
+    "tabCoords": "Координаттар",
+    "applyToMap": "Картада көрсету",
+    "coordValidationLon": "–180 мен 180 арасында болуы керек",
+    "coordValidationLat": "–90 мен 90 арасында болуы керек",
+    "coordValidationMinMax": "Мин максимумнан аз болуы керек",
+    "fileTooLarge": "Файл 50 МБ шегінен асады",
+    "imagePreview": "Алдын ала қарау"
   },
   "layers": {
     "title": "Қабаттар",
     "points": "Ағаш нүктелері",
     "heatmap": "Жылу картасы",
-    "districts": "Аудандар"
+    "districts": "Аудандар",
+    "tileSource": "Тайл көзі",
+    "mapboxTokenRequired": "Mapbox үшін NEXT_PUBLIC_MAPBOX_TOKEN орнатыңыз"
   },
   "dashboard": {
     "workspaceTitle": "Geo workspace",

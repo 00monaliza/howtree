@@ -49,13 +49,22 @@
     "detected": "detected",
     "ofArea": "of area",
     "treesPerKm": "trees/km²",
-    "geoDetection": "Geo detection"
+    "geoDetection": "Geo detection",
+    "tabCoords": "Coordinates",
+    "applyToMap": "Apply to Map",
+    "coordValidationLon": "Must be –180 to 180",
+    "coordValidationLat": "Must be –90 to 90",
+    "coordValidationMinMax": "Min must be less than max",
+    "fileTooLarge": "File exceeds 50 MB limit",
+    "imagePreview": "Preview"
   },
   "layers": {
     "title": "Layers",
     "points": "Tree Points",
     "heatmap": "Heatmap",
-    "districts": "Districts"
+    "districts": "Districts",
+    "tileSource": "Tile Source",
+    "mapboxTokenRequired": "Set NEXT_PUBLIC_MAPBOX_TOKEN to enable Mapbox Satellite"
   },
   "dashboard": {
     "workspaceTitle": "Geo workspace",

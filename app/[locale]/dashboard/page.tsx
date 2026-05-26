@@ -7,6 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { AnalysisPanel } from "@/components/panels/AnalysisPanel";
 import { LayerToggle } from "@/components/panels/LayerToggle";
+import { TileSourceSelector } from "@/components/map/TileSourceSelector";
 import { AssistantPanel } from "@/components/assistant/AssistantPanel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MapPinned, Satellite, ScanLine } from "lucide-react";
@@ -64,6 +65,12 @@ export default function DashboardPage() {
 
         <div className="py-3">
           <LayerToggle />
+        </div>
+
+        <Separator />
+
+        <div className="px-4 py-3">
+          <TileSourceSelector />
         </div>
 
         {/* Legend */}

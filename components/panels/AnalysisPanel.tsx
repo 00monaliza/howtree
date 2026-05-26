@@ -16,7 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { useMapStore } from "@/lib/store/mapStore";
 import { api, createJobWebSocket } from "@/lib/api/client";
-import { updateTreeSource } from "@/components/map/MapContainer";
+import { updateTreeSource, flyMapToBbox } from "@/components/map/MapContainer";
 import type { WsMessage } from "@/types";
 import { area as turfArea, bboxPolygon } from "@turf/turf";
 import {
@@ -27,6 +27,7 @@ import {
   Globe2,
   LocateFixed,
   MapPinned,
+  PenLine,
   Radar,
   Satellite,
   UploadCloud,
@@ -34,7 +35,7 @@ import {
   XCircle,
 } from "lucide-react";
 
-type Mode = "bbox" | "upload";
+type Mode = "bbox" | "upload" | "coords";
 
 const TERMINAL = new Set(["completed", "failed"]);
 
@@ -46,13 +47,14 @@ export function AnalysisPanel() {
     <div className="flex flex-col gap-0">
       <GeoPanelHeader />
 
-      <div className="grid grid-cols-2 gap-1 border-y border-border bg-background/35 p-1">
+      <div className="grid grid-cols-3 gap-1 border-y border-border bg-background/35 p-1">
         <TabBtn label={t("tabMap")} icon={Crosshair} active={mode === "bbox"} onClick={() => setMode("bbox")} />
         <TabBtn label={t("tabUpload")} icon={UploadCloud} active={mode === "upload"} onClick={() => setMode("upload")} />
+        <TabBtn label={t("tabCoords")} icon={PenLine} active={mode === "coords"} onClick={() => setMode("coords")} />
       </div>
 
       <div className="p-4">
-        {mode === "bbox" ? <BBoxPanel /> : <UploadPanel />}
+        {mode === "bbox" ? <BBoxPanel /> : mode === "upload" ? <UploadPanel /> : <ManualCoordsPanel />}
       </div>
     </div>
   );
@@ -331,13 +333,25 @@ function UploadPanel() {
   const [isGeoTiff, setIsGeoTiff] = useState(false);
   const [bbox, setBbox] = useState({ lonMin: "", latMin: "", lonMax: "", latMax: "" });
   const [dragOver, setDragOver] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [sizeError, setSizeError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
 
   function handleFileChange(f: File | null) {
     if (!f) return;
+    if (f.size > 50 * 1024 * 1024) {
+      setSizeError(t("fileTooLarge"));
+      return;
+    }
+    setSizeError(null);
     setFile(f);
     const ext = f.name.toLowerCase();
-    setIsGeoTiff(ext.endsWith(".tif") || ext.endsWith(".tiff"));
+    const isTiff = ext.endsWith(".tif") || ext.endsWith(".tiff");
+    setIsGeoTiff(isTiff);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(!isTiff ? URL.createObjectURL(f) : null);
   }
 
   function onDrop(e: DragEvent<HTMLDivElement>) {
@@ -426,10 +440,24 @@ function UploadPanel() {
         ) : (
           <div>
             <p className="text-sm text-muted-foreground">{t("dropHint")}</p>
-            <p className="text-xs text-muted-foreground/60 mt-1">GeoTIFF, JPEG, PNG · до 500 MB</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">GeoTIFF, JPEG, PNG · max 50 MB</p>
           </div>
         )}
+        {sizeError && <p className="text-xs text-destructive mt-1">{sizeError}</p>}
       </div>
+
+      {previewUrl && (
+        <div>
+          <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-1.5">
+            {t("imagePreview")}
+          </p>
+          <img
+            src={previewUrl}
+            alt="preview"
+            className="w-full rounded border border-border object-cover max-h-40"
+          />
+        </div>
+      )}
 
       {/* BBox inputs — only shown for non-GeoTIFF */}
       {file && !isGeoTiff && (
@@ -466,6 +494,137 @@ function UploadPanel() {
         className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold"
       >
         {isLoading ? t("processing") : t("findTrees")}
+      </Button>
+
+      <JobProgress
+        isLoading={isLoading}
+        isDone={isDone}
+        isFailed={isFailed}
+        progress={progress}
+        wsMessages={wsMessages}
+        error={jobStatus?.error ?? jobStatus?.error_message ?? null}
+      />
+
+      {isDone && treeCount > 0 && (
+        <>
+          <Separator />
+          <ZoneStats />
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Manual coordinates panel ────────────────────────────────────────────────────
+
+function ManualCoordsPanel() {
+  const t = useTranslations("analysis");
+  const { setSelectedBBox, jobStatus, treeCount, setJobStatus } = useMapStore();
+  const { isLoading, setIsLoading, wsMessages, setWsMessages, trackJob, resetJob } = useJobProgress();
+
+  const [coords, setCoords] = useState({ lonMin: "", latMin: "", lonMax: "", latMax: "" });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  function validate(): Record<string, string> {
+    const errs: Record<string, string> = {};
+    const lon1 = parseFloat(coords.lonMin);
+    const lat1 = parseFloat(coords.latMin);
+    const lon2 = parseFloat(coords.lonMax);
+    const lat2 = parseFloat(coords.latMax);
+    if (isNaN(lon1) || lon1 < -180 || lon1 > 180) errs.lonMin = t("coordValidationLon");
+    if (isNaN(lat1) || lat1 < -90 || lat1 > 90) errs.latMin = t("coordValidationLat");
+    if (isNaN(lon2) || lon2 < -180 || lon2 > 180) errs.lonMax = t("coordValidationLon");
+    if (isNaN(lat2) || lat2 < -90 || lat2 > 90) errs.latMax = t("coordValidationLat");
+    if (!errs.lonMin && !errs.lonMax && lon1 >= lon2) errs.lonMax = t("coordValidationMinMax");
+    if (!errs.latMin && !errs.latMax && lat1 >= lat2) errs.latMax = t("coordValidationMinMax");
+    return errs;
+  }
+
+  function applyToMap() {
+    const errs = validate();
+    if (Object.keys(errs).length) { setErrors(errs); return; }
+    setErrors({});
+    const lon1 = parseFloat(coords.lonMin);
+    const lat1 = parseFloat(coords.latMin);
+    const lon2 = parseFloat(coords.lonMax);
+    const lat2 = parseFloat(coords.latMax);
+    flyMapToBbox(lon1, lat1, lon2, lat2);
+    setSelectedBBox({ lon1, lat1, lon2, lat2 });
+  }
+
+  async function runAnalysis() {
+    const errs = validate();
+    if (Object.keys(errs).length) { setErrors(errs); return; }
+    setErrors({});
+    const lon1 = parseFloat(coords.lonMin);
+    const lat1 = parseFloat(coords.latMin);
+    const lon2 = parseFloat(coords.lonMax);
+    const lat2 = parseFloat(coords.latMax);
+    const bboxArray: [number, number, number, number] = [lon1, lat1, lon2, lat2];
+    flyMapToBbox(lon1, lat1, lon2, lat2);
+    setSelectedBBox({ lon1, lat1, lon2, lat2 });
+    setIsLoading(true);
+    setWsMessages([]);
+    resetJob();
+    try {
+      const { job_id } = await api.analyze(bboxArray);
+      await trackJob(job_id, bboxArray, (err) => {
+        setJobStatus({ status: "failed", progress: 0, error: formatApiError(err) });
+      });
+    } catch (err) {
+      setJobStatus({ status: "failed", progress: 0, error: formatApiError(err) });
+      setIsLoading(false);
+    }
+  }
+
+  const fields = [
+    { key: "lonMin" as const, label: "Lon min", placeholder: "71.380" },
+    { key: "latMin" as const, label: "Lat min", placeholder: "51.150" },
+    { key: "lonMax" as const, label: "Lon max", placeholder: "71.480" },
+    { key: "latMax" as const, label: "Lat max", placeholder: "51.220" },
+  ];
+
+  const allFilled = fields.every(({ key }) => coords[key] !== "");
+  const progress = jobStatus?.progress ?? 0;
+  const isDone = jobStatus?.status === "completed";
+  const isFailed = jobStatus?.status === "failed";
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-2">
+        {fields.map(({ key, label, placeholder }) => (
+          <div key={key}>
+            <label className="text-xs text-muted-foreground block mb-0.5">{label}</label>
+            <input
+              type="number"
+              step="any"
+              value={coords[key]}
+              onChange={(e) => setCoords((c) => ({ ...c, [key]: e.target.value }))}
+              className="w-full bg-secondary/50 border border-border rounded px-2 py-1 text-xs font-mono text-foreground focus:outline-none focus:border-primary"
+              placeholder={placeholder}
+            />
+            {errors[key] && <p className="text-[10px] text-destructive mt-0.5">{errors[key]}</p>}
+          </div>
+        ))}
+      </div>
+
+      <Button
+        variant="secondary"
+        onClick={applyToMap}
+        disabled={!allFilled}
+        className="w-full font-semibold"
+      >
+        {t("applyToMap")}
+      </Button>
+
+      <Button
+        onClick={runAnalysis}
+        disabled={!allFilled || isLoading}
+        className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold"
+      >
+        {isLoading
+          ? jobStatus?.status === "queued" ? t("queued") : t("running")
+          : t("run")}
       </Button>
 
       <JobProgress
