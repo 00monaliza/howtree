@@ -48,7 +48,8 @@
     "analysisDate": "Талдау күні",
     "detected": "анықталды",
     "ofArea": "аудан",
-    "treesPerKm": "ағаш/км²"
+    "treesPerKm": "ағаш/км²",
+    "geoDetection": "Гео-анықтау"
   },
   "layers": {
     "title": "Қабаттар",

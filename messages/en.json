@@ -48,7 +48,8 @@
     "analysisDate": "Analysis Date",
     "detected": "detected",
     "ofArea": "of area",
-    "treesPerKm": "trees/km²"
+    "treesPerKm": "trees/km²",
+    "geoDetection": "Geo detection"
   },
   "layers": {
     "title": "Layers",

@@ -36,6 +36,8 @@ import {
 
 type Mode = "bbox" | "upload";
 
+const TERMINAL = new Set(["completed", "failed"]);
+
 export function AnalysisPanel() {
   const t = useTranslations("analysis");
   const [mode, setMode] = useState<Mode>("bbox");
@@ -92,7 +94,7 @@ function GeoPanelHeader() {
         <div>
           <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-emerald-200/75">
             <Satellite className="h-3.5 w-3.5" />
-            Geo detection
+            {t("geoDetection")}
           </div>
           <h2 className="text-xl font-semibold leading-tight text-foreground">
             {t("title")}
@@ -120,8 +122,6 @@ function useJobProgress() {
     wsRef.current?.close();
     if (pollRef.current) clearInterval(pollRef.current);
   }, []);
-
-  const TERMINAL = new Set(["completed", "failed"]);
 
   const finishJob = useCallback(async (
     job_id: string,

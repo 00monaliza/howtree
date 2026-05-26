@@ -48,7 +48,8 @@
     "analysisDate": "Дата анализа",
     "detected": "обнаружено",
     "ofArea": "площади",
-    "treesPerKm": "дер/км²"
+    "treesPerKm": "дер/км²",
+    "geoDetection": "Гео-обнаружение"
   },
   "layers": {
     "title": "Слои",
