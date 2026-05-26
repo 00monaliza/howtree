@@ -1,17 +1,19 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
-
-const NAV = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/analytics", label: "Analytics" },
-  { href: "/reports", label: "Reports" },
-];
+import { Link, usePathname } from "@/lib/i18n/navigation";
+import { LanguageSwitcher } from "./LanguageSwitcher";
 
 export function TopNav() {
+  const t = useTranslations("nav");
   const path = usePathname();
+
+  const NAV = [
+    { href: "/dashboard" as const, label: t("dashboard") },
+    { href: "/analytics" as const, label: t("analytics") },
+    { href: "/reports" as const, label: t("reports") },
+  ];
 
   return (
     <header className="h-12 border-b border-border bg-card flex items-center px-4 gap-6 shrink-0 z-50">
@@ -27,7 +29,7 @@ export function TopNav() {
           HowTree
         </span>
         <span className="text-xs text-muted-foreground font-mono ml-1 hidden sm:block">
-          Urban Canopy Intelligence
+          {t("subtitle")}
         </span>
       </div>
 
@@ -40,7 +42,7 @@ export function TopNav() {
               "px-3 py-1.5 text-xs font-medium rounded transition-colors",
               path === href
                 ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                : "text-muted-foreground hover:text-foreground hover:bg-secondary",
             )}
           >
             {label}
@@ -48,9 +50,12 @@ export function TopNav() {
         ))}
       </nav>
 
-      <div className="ml-auto flex items-center gap-2">
-        <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-        <span className="text-xs text-muted-foreground">API Connected</span>
+      <div className="ml-auto flex items-center gap-3">
+        <LanguageSwitcher />
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+          <span className="text-xs text-muted-foreground">{t("connected")}</span>
+        </div>
       </div>
     </header>
   );
