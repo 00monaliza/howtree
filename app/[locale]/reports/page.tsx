@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
@@ -49,15 +50,16 @@ const RECENT_REPORTS = [
 ];
 
 export default function ReportsPage() {
+  const t = useTranslations("reports");
   const [district, setDistrict] = useState<string>("Queens");
   const stats = MOCK_STATS[district];
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-foreground">Reports</h1>
+        <h1 className="text-xl font-semibold text-foreground">{t("title")}</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Generate technical PDF reports for district analysis
+          {t("subtitle")}
         </p>
       </div>
 
@@ -67,13 +69,13 @@ export default function ReportsPage() {
           <Card className="bg-card border-border">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-semibold text-foreground">
-                Generate Report
+                {t("generate")}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-xs text-muted-foreground uppercase tracking-wider font-medium">
-                  Select District
+                  {t("selectDistrict")}
                 </label>
                 <Select value={district} onValueChange={setDistrict}>
                   <SelectTrigger className="bg-secondary border-border text-foreground">
@@ -97,10 +99,10 @@ export default function ReportsPage() {
               {stats && (
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    { label: "Trees Detected", value: stats.treeCount.toLocaleString() },
-                    { label: "Canopy Coverage", value: stats.canopy },
-                    { label: "Density (trees/km²)", value: stats.density.toLocaleString() },
-                    { label: "Avg Confidence", value: `${stats.confidence}%` },
+                    { label: t("treesDetected"), value: stats.treeCount.toLocaleString() },
+                    { label: t("canopyCoverage"), value: stats.canopy },
+                    { label: t("density"), value: stats.density.toLocaleString() },
+                    { label: t("avgConf"), value: `${stats.confidence}%` },
                   ].map(({ label, value }) => (
                     <div key={label} className="bg-secondary/50 rounded border border-border p-2.5">
                       <p className="text-xs text-muted-foreground">{label}</p>
@@ -112,15 +114,15 @@ export default function ReportsPage() {
 
               <div className="space-y-1.5">
                 <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">
-                  Report Contents
+                  {t("contents")}
                 </p>
                 <div className="space-y-1">
                   {[
-                    "Executive summary with key metrics",
-                    "Satellite imagery map with tree overlay",
-                    "Sub-zone breakdown table",
-                    "Confidence distribution chart",
-                    "Government-format technical document",
+                    t("item1"),
+                    t("item2"),
+                    t("item3"),
+                    t("item4"),
+                    t("item5"),
                   ].map((item) => (
                     <div key={item} className="flex items-center gap-2">
                       <svg className="w-3 h-3 text-primary shrink-0" fill="currentColor" viewBox="0 0 20 20">
@@ -142,7 +144,7 @@ export default function ReportsPage() {
           <Card className="bg-card border-border">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-semibold text-foreground">
-                Recent Reports
+                {t("recent")}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -167,14 +169,14 @@ export default function ReportsPage() {
           <Card className="bg-card border-border">
             <CardContent className="pt-4">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                Format
+                {t("format")}
               </p>
               <div className="space-y-1.5">
                 {[
-                  { label: "Format", value: "PDF/A" },
-                  { label: "Size", value: "~2 MB" },
-                  { label: "Language", value: "English" },
-                  { label: "Standard", value: "ISO 32000" },
+                  { label: t("format"), value: "PDF/A" },
+                  { label: t("size"), value: "~2 MB" },
+                  { label: t("language"), value: "English" },
+                  { label: t("standard"), value: "ISO 32000" },
                 ].map(({ label, value }) => (
                   <div key={label} className="flex justify-between text-xs">
                     <span className="text-muted-foreground">{label}</span>

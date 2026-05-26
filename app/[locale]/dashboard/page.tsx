@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { AnalysisPanel } from "@/components/panels/AnalysisPanel";
@@ -19,6 +20,8 @@ const MapContainer = dynamic(
 );
 
 export default function DashboardPage() {
+  const t = useTranslations("dashboard");
+  const tAnalysis = useTranslations("analysis");
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   return (
@@ -43,7 +46,7 @@ export default function DashboardPage() {
       >
         <div className="px-4 py-3 border-b border-border flex items-center justify-between shrink-0">
           <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-            Analysis Control
+            {tAnalysis("sidebarTitle")}
           </h2>
           <button
             onClick={() => setSidebarOpen(false)}
@@ -66,14 +69,14 @@ export default function DashboardPage() {
         {/* Legend */}
         <div className="mt-auto px-4 py-3 border-t border-border">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-            Confidence
+            {t("confidence")}
           </p>
           <div className="space-y-1">
             {[
-              { color: "#22c55e", label: "≥ 90% — High" },
-              { color: "#86efac", label: "≥ 70% — Medium-high" },
-              { color: "#fbbf24", label: "≥ 50% — Medium" },
-              { color: "#f87171", label: "< 50% — Low" },
+              { color: "#22c55e", label: t("confHigh") },
+              { color: "#86efac", label: t("confMedHigh") },
+              { color: "#fbbf24", label: t("confMed") },
+              { color: "#f87171", label: t("confLow") },
             ].map(({ color, label }) => (
               <div key={label} className="flex items-center gap-2">
                 <span
@@ -107,9 +110,9 @@ export default function DashboardPage() {
                 <Satellite className="h-5 w-5 text-emerald-200" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-foreground">Geo workspace</p>
+                <p className="text-sm font-semibold text-foreground">{t("workspaceTitle")}</p>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  Спутниковая подложка, bbox-сетка и слой найденных крон в одном окне.
+                  {t("workspaceDesc")}
                 </p>
               </div>
             </div>
@@ -134,7 +137,7 @@ export default function DashboardPage() {
 
         {/* Floating info bar */}
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-card/90 backdrop-blur border border-border rounded px-3 py-1.5 text-xs font-mono text-muted-foreground pointer-events-none whitespace-nowrap">
-          Зажми и протяни прямоугольник, чтобы выбрать область анализа
+          {tAnalysis("mapHint")}
         </div>
       </div>
 

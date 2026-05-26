@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -65,6 +66,7 @@ function SummarySkeleton() {
 }
 
 export default function AnalyticsPage() {
+  const t = useTranslations("analytics");
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -84,10 +86,10 @@ export default function AnalyticsPage() {
     : 0;
 
   const summaryCards = [
-    { label: "Total Trees Detected", value: fmt(totalTrees), delta: `${completed.length} analyses` },
-    { label: "Total Canopy Area", value: `${fmt(totalCanopy / 10_000, 1)} ha`, delta: `${fmt(totalCanopy, 0)} m²` },
-    { label: "Analyses Run", value: fmt(jobs.length), delta: `${completed.length} completed` },
-    { label: "Avg Confidence", value: `${fmt(avgConf * 100, 1)}%`, delta: completed.length ? "across all jobs" : "no data" },
+    { label: t("totalTrees"), value: fmt(totalTrees), delta: `${completed.length} ${t("analyses")}` },
+    { label: t("totalCanopy"), value: `${fmt(totalCanopy / 10_000, 1)} ha`, delta: `${fmt(totalCanopy, 0)} m²` },
+    { label: t("analysesRun"), value: fmt(jobs.length), delta: `${completed.length} ${t("completed")}` },
+    { label: t("avgConf"), value: `${fmt(avgConf * 100, 1)}%`, delta: completed.length ? t("acrossJobs") : t("noData") },
   ];
 
   return (
@@ -95,9 +97,9 @@ export default function AnalyticsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-foreground">Analytics</h1>
+          <h1 className="text-xl font-semibold text-foreground">{t("title")}</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Real-time results from your tree detection analyses
+            {t("subtitle")}
           </p>
         </div>
         <Button
@@ -110,7 +112,7 @@ export default function AnalyticsPage() {
           <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
           </svg>
-          Export CSV
+          {t("exportCsv")}
         </Button>
       </div>
 
@@ -135,30 +137,30 @@ export default function AnalyticsPage() {
       <Card className="bg-card border-border">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold text-foreground">
-            Analysis History
+            {t("history")}
           </CardTitle>
         </CardHeader>
         <CardContent>
           {error ? (
-            <p className="text-sm text-destructive py-4">Failed to load: {error}</p>
+            <p className="text-sm text-destructive py-4">{t("failedLoad")} {error}</p>
           ) : loading ? (
             <div className="space-y-2 py-2">
               {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-10 w-full" />)}
             </div>
           ) : jobs.length === 0 ? (
             <p className="text-sm text-muted-foreground py-6 text-center">
-              No analyses yet. Run your first detection on the Dashboard.
+              {t("empty")}
             </p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow className="border-border hover:bg-transparent">
-                  <TableHead className="text-muted-foreground text-xs">Date</TableHead>
-                  <TableHead className="text-muted-foreground text-xs">Status</TableHead>
-                  <TableHead className="text-muted-foreground text-xs text-right">Trees</TableHead>
-                  <TableHead className="text-muted-foreground text-xs text-right">Canopy</TableHead>
-                  <TableHead className="text-muted-foreground text-xs text-right">Confidence</TableHead>
-                  <TableHead className="text-muted-foreground text-xs">BBox</TableHead>
+                  <TableHead className="text-muted-foreground text-xs">{t("date")}</TableHead>
+                  <TableHead className="text-muted-foreground text-xs">{t("status")}</TableHead>
+                  <TableHead className="text-muted-foreground text-xs text-right">{t("trees")}</TableHead>
+                  <TableHead className="text-muted-foreground text-xs text-right">{t("canopy")}</TableHead>
+                  <TableHead className="text-muted-foreground text-xs text-right">{t("confidence")}</TableHead>
+                  <TableHead className="text-muted-foreground text-xs">{t("bbox")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
