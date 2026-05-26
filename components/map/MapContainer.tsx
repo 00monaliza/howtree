@@ -5,17 +5,25 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useMapStore } from "@/lib/store/mapStore";
 import { api } from "@/lib/api/client";
-import type { TreeGeoJSON, MapLayer } from "@/types";
+import type { TreeGeoJSON, MapLayer, TileSource } from "@/types";
 
-const SATELLITE_STYLE: maplibregl.StyleSpecification = {
-  version: 8,
-  glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
-  sources: {
+// ── Tile source URLs ────────────────────────────────────────────────────────
+const ESRI_TILES = [
+  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+];
+const ESRI_LABEL_TILES = [
+  "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+];
+const OSM_TILES = ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"];
+
+function buildMapStyle(
+  tileSource: TileSource,
+  mapboxToken: string | undefined
+): maplibregl.StyleSpecification {
+  const sources: maplibregl.StyleSpecification["sources"] = {
     "esri-satellite": {
       type: "raster",
-      tiles: [
-        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-      ],
+      tiles: ESRI_TILES,
       tileSize: 256,
       attribution:
         "© Esri, Maxar, GeoEye, Earthstar Geographics, CNES/Airbus DS, USDA, USGS, AeroGRID, IGN",
@@ -23,18 +31,73 @@ const SATELLITE_STYLE: maplibregl.StyleSpecification = {
     },
     "esri-labels": {
       type: "raster",
-      tiles: [
-        "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
-      ],
+      tiles: ESRI_LABEL_TILES,
       tileSize: 256,
       maxzoom: 19,
     },
-  },
-  layers: [
-    { id: "satellite", type: "raster", source: "esri-satellite" },
-    { id: "labels", type: "raster", source: "esri-labels", paint: { "raster-opacity": 0.8 } },
-  ],
-};
+    osm: {
+      type: "raster",
+      tiles: OSM_TILES,
+      tileSize: 256,
+      attribution: "© OpenStreetMap contributors",
+      maxzoom: 19,
+    },
+  };
+
+  const layers: maplibregl.StyleSpecification["layers"] = [
+    {
+      id: "base-esri",
+      type: "raster",
+      source: "esri-satellite",
+      layout: { visibility: tileSource === "esri" ? "visible" : "none" },
+    },
+    {
+      id: "base-esri-labels",
+      type: "raster",
+      source: "esri-labels",
+      paint: { "raster-opacity": 0.8 },
+      layout: { visibility: tileSource === "esri" ? "visible" : "none" },
+    },
+    {
+      id: "base-osm",
+      type: "raster",
+      source: "osm",
+      layout: { visibility: tileSource === "osm" ? "visible" : "none" },
+    },
+  ];
+
+  if (mapboxToken) {
+    sources["mapbox-satellite"] = {
+      type: "raster",
+      tiles: [
+        `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/tiles/256/{z}/{x}/{y}?access_token=${mapboxToken}`,
+      ],
+      tileSize: 256,
+      attribution: "© Mapbox",
+      maxzoom: 22,
+    };
+    layers.push({
+      id: "base-mapbox",
+      type: "raster",
+      source: "mapbox-satellite",
+      layout: { visibility: tileSource === "mapbox" ? "visible" : "none" },
+    });
+  }
+
+  return {
+    version: 8,
+    glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+    sources,
+    layers,
+  };
+}
+
+const BASE_LAYERS: { id: string; src: TileSource }[] = [
+  { id: "base-esri", src: "esri" },
+  { id: "base-esri-labels", src: "esri" },
+  { id: "base-osm", src: "osm" },
+  { id: "base-mapbox", src: "mapbox" },
+];
 
 const CONFIDENCE_COLORS: maplibregl.ExpressionSpecification = [
   "case",
@@ -60,38 +123,43 @@ export function MapContainer() {
   const [selectMode, setSelectMode] = useState(true);
   const [isMapReady, setIsMapReady] = useState(false);
 
-  const { setSelectedBBox, activeLayers, selectedBBox, setAnalysisResults } = useMapStore();
+  const { setSelectedBBox, activeLayers, selectedBBox, setAnalysisResults, tileSource } =
+    useMapStore();
 
-  // ── Auto-load last analysis on map mount ────────────────────────────────────
-  const autoLoadTrees = useCallback(async (map: maplibregl.Map) => {
-    try {
-      const saved = localStorage.getItem(LAST_BBOX_KEY);
-      if (!saved) return;
-      const bbox = JSON.parse(saved) as [number, number, number, number];
-      const geojson = await api.getTreesGeoJSON(bbox);
-      if (!geojson.features.length) return;
+  // ── Auto-load last analysis on map mount ───────────────────────────────────
+  const autoLoadTrees = useCallback(
+    async (map: maplibregl.Map) => {
+      try {
+        const saved = localStorage.getItem(LAST_BBOX_KEY);
+        if (!saved) return;
+        const bbox = JSON.parse(saved) as [number, number, number, number];
+        const geojson = await api.getTreesGeoJSON(bbox);
+        if (!geojson.features.length) return;
 
-      const src = map.getSource("trees") as maplibregl.GeoJSONSource | undefined;
-      src?.setData(geojson);
+        const src = map.getSource("trees") as maplibregl.GeoJSONSource | undefined;
+        src?.setData(geojson);
 
-      const { jobs } = await api.listJobs(1, "completed");
-      if (jobs[0]?.tree_count) {
-        setAnalysisResults(jobs[0].tree_count, 0);
+        const { jobs } = await api.listJobs(1, "completed");
+        if (jobs[0]?.tree_count) {
+          setAnalysisResults(jobs[0].tree_count, 0);
+        }
+      } catch {
+        // Silently ignore — stale localStorage or API error
       }
-    } catch {
-      // Silently ignore — stale localStorage or API error
-    }
-  }, [setAnalysisResults]);
+    },
+    [setAnalysisResults]
+  );
 
   // ── Map init ────────────────────────────────────────────────────────────────
   const initMap = useCallback(() => {
     if (!containerRef.current || mapRef.current) return;
 
-    const { mapView } = useMapStore.getState();
+    const { mapView, tileSource: initTileSource } = useMapStore.getState();
+    const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: SATELLITE_STYLE,
+      style: buildMapStyle(initTileSource, mapboxToken),
       center: mapView.center,
       zoom: mapView.zoom,
       attributionControl: { compact: true },
@@ -102,10 +170,7 @@ export function MapContainer() {
 
     map.on("moveend", () => {
       const center = map.getCenter();
-      useMapStore.getState().setMapView(
-        [center.lng, center.lat],
-        map.getZoom()
-      );
+      useMapStore.getState().setMapView([center.lng, center.lat], map.getZoom());
     });
 
     map.on("load", () => {
@@ -118,6 +183,17 @@ export function MapContainer() {
 
     mapRef.current = map;
   }, [autoLoadTrees]);
+
+  // ── Tile source switching ───────────────────────────────────────────────────
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !isMapReady) return;
+    BASE_LAYERS.forEach(({ id, src }) => {
+      if (map.getLayer(id)) {
+        map.setLayoutProperty(id, "visibility", tileSource === src ? "visible" : "none");
+      }
+    });
+  }, [tileSource, isMapReady]);
 
   // ── Tree click popup ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -135,9 +211,7 @@ export function MapContainer() {
       };
 
       const confidencePct = Math.round(confidence * 100);
-      const canopyText = canopy_area_m2 != null
-        ? `${Math.round(canopy_area_m2)} m²`
-        : "—";
+      const canopyText = canopy_area_m2 != null ? `${Math.round(canopy_area_m2)} m²` : "—";
 
       popupRef.current?.remove();
       popupRef.current = new maplibregl.Popup({ closeButton: true, maxWidth: "200px" })
@@ -153,8 +227,12 @@ export function MapContainer() {
         .addTo(map);
     };
 
-    const onEnter = () => { map.getCanvas().style.cursor = "pointer"; };
-    const onLeave = () => { map.getCanvas().style.cursor = selectMode ? "crosshair" : ""; };
+    const onEnter = () => {
+      map.getCanvas().style.cursor = "pointer";
+    };
+    const onLeave = () => {
+      map.getCanvas().style.cursor = selectMode ? "crosshair" : "";
+    };
 
     map.on("click", "tree-points", onClick);
     map.on("mouseenter", "tree-points", onEnter);
@@ -167,7 +245,7 @@ export function MapContainer() {
     };
   }, [isMapReady, selectMode]);
 
-  // ── Drag-to-draw bbox ───────────────────────────────────────────────────────
+  // ── Drag-to-draw bbox ──────────────────────────────────────────────────────
   const startDrag = useCallback(
     (e: maplibregl.MapMouseEvent) => {
       if (!selectMode) return;
@@ -199,7 +277,8 @@ export function MapContainer() {
       const endLng = e.lngLat.lng;
       const endLat = e.lngLat.lat;
 
-      if (Math.abs(endLng - startLng) < 0.0001 && Math.abs(endLat - startLat) < 0.0001) return;
+      if (Math.abs(endLng - startLng) < 0.0001 && Math.abs(endLat - startLat) < 0.0001)
+        return;
 
       setSelectedBBox({
         lon1: Math.min(startLng, endLng),
@@ -211,7 +290,7 @@ export function MapContainer() {
     [setSelectedBBox]
   );
 
-  // ── Wire drag events ─────────────────────────────────────────────────────────
+  // ── Wire drag events ────────────────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !isMapReady) return;
@@ -234,7 +313,12 @@ export function MapContainer() {
     if (!src) return;
     src.setData(
       selectedBBox
-        ? buildBBoxPolygon(selectedBBox.lon1, selectedBBox.lat1, selectedBBox.lon2, selectedBBox.lat2)
+        ? buildBBoxPolygon(
+            selectedBBox.lon1,
+            selectedBBox.lat1,
+            selectedBBox.lon2,
+            selectedBBox.lat2
+          )
         : { type: "FeatureCollection", features: [] }
     );
   }, [selectedBBox]);
@@ -289,11 +373,16 @@ export function MapContainer() {
       <div className="absolute top-3 left-3 flex flex-col gap-1 z-10">
         <button
           onClick={() => setSelectMode((v) => !v)}
-          title={selectMode ? "Режим выделения (перетащи чтобы выбрать зону)" : "Включить выделение"}
-          className={`w-9 h-9 rounded flex items-center justify-center text-base transition-colors shadow-md border ${selectMode
+          title={
+            selectMode
+              ? "Режим выделения (перетащи чтобы выбрать зону)"
+              : "Включить выделение"
+          }
+          className={`w-9 h-9 rounded flex items-center justify-center text-base transition-colors shadow-md border ${
+            selectMode
               ? "bg-primary text-primary-foreground border-primary"
               : "bg-card text-muted-foreground border-border hover:text-foreground"
-            }`}
+          }`}
         >
           ⬚
         </button>
@@ -321,7 +410,10 @@ export function MapContainer() {
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function buildBBoxPolygon(
-  lon1: number, lat1: number, lon2: number, lat2: number
+  lon1: number,
+  lat1: number,
+  lon2: number,
+  lat2: number
 ): GeoJSON.FeatureCollection {
   return {
     type: "FeatureCollection",
@@ -330,7 +422,9 @@ function buildBBoxPolygon(
         type: "Feature",
         geometry: {
           type: "Polygon",
-          coordinates: [[[lon1, lat1], [lon2, lat1], [lon2, lat2], [lon1, lat2], [lon1, lat1]]],
+          coordinates: [
+            [[lon1, lat1], [lon2, lat1], [lon2, lat2], [lon1, lat2], [lon1, lat1]],
+          ],
         },
         properties: {},
       },
@@ -373,11 +467,17 @@ function addTreeLayers(map: maplibregl.Map) {
       "heatmap-weight": ["interpolate", ["linear"], ["get", "confidence"], 0, 0, 1, 1],
       "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 0, 1, 16, 3],
       "heatmap-color": [
-        "interpolate", ["linear"], ["heatmap-density"],
-        0, "rgba(0,0,0,0)",
-        0.2, "rgba(34,197,94,0.2)",
-        0.5, "rgba(34,197,94,0.5)",
-        1, "rgba(34,197,94,1)",
+        "interpolate",
+        ["linear"],
+        ["heatmap-density"],
+        0,
+        "rgba(0,0,0,0)",
+        0.2,
+        "rgba(34,197,94,0.2)",
+        0.5,
+        "rgba(34,197,94,0.5)",
+        1,
+        "rgba(34,197,94,1)",
       ],
       "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 0, 2, 16, 20],
       "heatmap-opacity": 0.8,
@@ -400,7 +500,7 @@ function addTreeLayers(map: maplibregl.Map) {
   });
 }
 
-// ── Map registry ──────────────────────────────────────────────────────────────
+// ── Map registry ───────────────────────────────────────────────────────────────
 const mapRegistry = new Map<string, maplibregl.Map>();
 
 export function registerMap(id: string, map: maplibregl.Map) {
@@ -411,7 +511,10 @@ export function deregisterMap(id: string) {
   mapRegistry.delete(id);
 }
 
-export function updateTreeSource(geojson: TreeGeoJSON, bbox?: [number, number, number, number]) {
+export function updateTreeSource(
+  geojson: TreeGeoJSON,
+  bbox?: [number, number, number, number]
+) {
   if (bbox) {
     try {
       localStorage.setItem(LAST_BBOX_KEY, JSON.stringify(bbox));
@@ -423,5 +526,20 @@ export function updateTreeSource(geojson: TreeGeoJSON, bbox?: [number, number, n
     if (!map || !map.isStyleLoaded()) return;
     const src = map.getSource("trees") as maplibregl.GeoJSONSource | undefined;
     src?.setData(geojson);
+  });
+}
+
+export function flyMapToBbox(
+  lon1: number,
+  lat1: number,
+  lon2: number,
+  lat2: number
+) {
+  mapRegistry.forEach((map) => {
+    map.fitBounds([[lon1, lat1], [lon2, lat2]], {
+      padding: 60,
+      duration: 800,
+      maxZoom: 17,
+    });
   });
 }

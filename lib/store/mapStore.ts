@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { BBox, DistrictStats, JobStatus, MapLayer } from "@/types";
+import type { BBox, DistrictStats, JobStatus, MapLayer, TileSource } from "@/types";
 
 interface MapViewState {
   center: [number, number];
@@ -15,6 +15,7 @@ interface MapState {
   treeCount: number;
   canopyCoverage: number;
   mapView: MapViewState;
+  tileSource: TileSource;
 
   setSelectedBBox: (bbox: BBox | null) => void;
   setActiveJob: (jobId: string | null) => void;
@@ -24,6 +25,7 @@ interface MapState {
   setAnalysisResults: (count: number, coverage: number) => void;
   resetJob: () => void;
   setMapView: (center: [number, number], zoom: number) => void;
+  setTileSource: (src: TileSource) => void;
 }
 
 export const useMapStore = create<MapState>((set) => ({
@@ -35,9 +37,10 @@ export const useMapStore = create<MapState>((set) => ({
   treeCount: 0,
   canopyCoverage: 0,
   mapView: {
-    center: [71.43, 51.18], // Астана по умолчанию
+    center: [71.43, 51.18],
     zoom: 12,
   },
+  tileSource: "esri",
 
   setSelectedBBox: (bbox) => set({ selectedBBox: bbox }),
   setActiveJob: (jobId) => set({ activeJob: jobId }),
@@ -53,4 +56,5 @@ export const useMapStore = create<MapState>((set) => ({
     set({ treeCount: count, canopyCoverage: coverage }),
   resetJob: () => set({ activeJob: null, jobStatus: null }),
   setMapView: (center, zoom) => set({ mapView: { center, zoom } }),
+  setTileSource: (src) => set({ tileSource: src }),
 }));

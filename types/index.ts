@@ -94,3 +94,4 @@ export interface WsMessage {
 }
 
 export type MapLayer = "points" | "heatmap" | "districts";
+export type TileSource = "esri" | "mapbox" | "osm";
