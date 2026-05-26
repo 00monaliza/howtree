@@ -12,7 +12,7 @@ import {
 
 const LOCALES = [
   { value: "ru", label: "RU", flag: "🇷🇺" },
-  { value: "kk", label: "KZ", flag: "🇰🇿" },
+  { value: "kk", label: "KK", flag: "🇰🇿" },
   { value: "en", label: "EN", flag: "🇬🇧" },
 ] as const;
 
