@@ -173,7 +173,7 @@ export default function ReportsPage() {
               </p>
               <div className="space-y-1.5">
                 {[
-                  { label: t("format"), value: "PDF/A" },
+                  { label: t("fileFormat"), value: "PDF/A" },
                   { label: t("size"), value: "~2 MB" },
                   { label: t("language"), value: "English" },
                   { label: t("standard"), value: "ISO 32000" },

@@ -129,6 +129,7 @@
     "item5": "Government-format technical document",
     "recent": "Recent Reports",
     "format": "Format",
+    "fileFormat": "File Format",
     "size": "Size",
     "language": "Language",
     "standard": "Standard"
