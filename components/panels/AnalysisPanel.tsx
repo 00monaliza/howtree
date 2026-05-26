@@ -8,6 +8,7 @@ import {
   type ComponentType,
   type DragEvent,
 } from "react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +37,7 @@ import {
 type Mode = "bbox" | "upload";
 
 export function AnalysisPanel() {
+  const t = useTranslations("analysis");
   const [mode, setMode] = useState<Mode>("bbox");
 
   return (
@@ -43,8 +45,8 @@ export function AnalysisPanel() {
       <GeoPanelHeader />
 
       <div className="grid grid-cols-2 gap-1 border-y border-border bg-background/35 p-1">
-        <TabBtn label="Карта" icon={Crosshair} active={mode === "bbox"} onClick={() => setMode("bbox")} />
-        <TabBtn label="Снимок" icon={UploadCloud} active={mode === "upload"} onClick={() => setMode("upload")} />
+        <TabBtn label={t("tabMap")} icon={Crosshair} active={mode === "bbox"} onClick={() => setMode("bbox")} />
+        <TabBtn label={t("tabUpload")} icon={UploadCloud} active={mode === "upload"} onClick={() => setMode("upload")} />
       </div>
 
       <div className="p-4">
@@ -81,6 +83,7 @@ function TabBtn({
 }
 
 function GeoPanelHeader() {
+  const t = useTranslations("analysis");
   return (
     <div className="relative overflow-hidden border-b border-border bg-[#08110f] px-4 py-4">
       <div className="absolute -right-10 -top-10 h-36 w-36 rounded-full border border-emerald-300/20 bg-[radial-gradient(circle_at_35%_35%,rgba(134,239,172,0.42),rgba(20,83,45,0.38)_34%,rgba(6,78,59,0.18)_52%,transparent_72%)]" />
@@ -92,7 +95,7 @@ function GeoPanelHeader() {
             Geo detection
           </div>
           <h2 className="text-xl font-semibold leading-tight text-foreground">
-            Анализ зелёного покрова
+            {t("title")}
           </h2>
         </div>
         <div className="grid h-14 w-14 shrink-0 place-items-center rounded border border-emerald-300/20 bg-emerald-300/10">
@@ -106,6 +109,7 @@ function GeoPanelHeader() {
 // ── Shared progress hook ────────────────────────────────────────────────────────
 
 function useJobProgress() {
+  const t = useTranslations("analysis");
   const { setActiveJob, setJobStatus, setAnalysisResults, resetJob } = useMapStore();
   const [wsMessages, setWsMessages] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -138,13 +142,13 @@ function useJobProgress() {
           Math.round(density * 0.03 * 100) / 100,
         );
       } else if (final.status === "failed") {
-        onError(final.error ?? "Анализ завершился с ошибкой");
+        onError(final.error ?? t("genericError"));
       }
       setIsLoading(false);
     } catch {
       setIsLoading(false);
     }
-  }, [setJobStatus, setAnalysisResults]);
+  }, [setJobStatus, setAnalysisResults, t]);
 
   // Polling-фоллбэк: используется когда WebSocket закрывается до завершения джоба
   const startPolling = useCallback((
@@ -155,7 +159,7 @@ function useJobProgress() {
   ) => {
     if (pollRef.current) clearInterval(pollRef.current);
     setJobStatus({ status: "queued", progress: 0 });
-    setWsMessages(["Ожидание в очереди..."]);
+    setWsMessages([t("queueWait")]);
 
     pollRef.current = setInterval(async () => {
       try {
@@ -174,7 +178,7 @@ function useJobProgress() {
         setIsLoading(false);
       }
     }, 3000);
-  }, [setJobStatus, finishJob]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [setJobStatus, finishJob, t]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const trackJob = useCallback(
     async (job_id: string, bboxArray: [number, number, number, number], onError: (err: string) => void) => {
@@ -218,6 +222,7 @@ function useJobProgress() {
 // ── BBox analysis panel ─────────────────────────────────────────────────────────
 
 function BBoxPanel() {
+  const t = useTranslations("analysis");
   const { selectedBBox, jobStatus, treeCount, setJobStatus } = useMapStore();
   const { isLoading, setIsLoading, wsMessages, setWsMessages, trackJob, resetJob } = useJobProgress();
 
@@ -256,7 +261,7 @@ function BBoxPanel() {
       <div>
         <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           <LocateFixed className="h-3.5 w-3.5" />
-          Зона анализа
+          {t("zone")}
         </p>
         {selectedBBox ? (
           <div className="space-y-2 rounded border border-emerald-400/20 bg-emerald-400/5 p-3">
@@ -265,7 +270,7 @@ function BBoxPanel() {
               <CoordTile label="NE" value={`${selectedBBox.lat2.toFixed(5)}, ${selectedBBox.lon2.toFixed(5)}`} />
             </div>
             <div className="flex items-center justify-between border-t border-border pt-2">
-              <span className="text-xs text-muted-foreground">Площадь</span>
+              <span className="text-xs text-muted-foreground">{t("area")}</span>
               <span className="text-foreground">
                 {areaSqKm?.toFixed(2)} км²
               </span>
@@ -276,9 +281,9 @@ function BBoxPanel() {
             <div className="mx-auto mb-2 grid h-10 w-10 place-items-center rounded border border-border bg-background/70">
               <MapPinned className="h-5 w-5 text-primary" />
             </div>
-            <p className="text-sm font-medium text-foreground">Выдели прямоугольник на карте</p>
+            <p className="text-sm font-medium text-foreground">{t("selectHint")}</p>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              Зажми мышь и протяни рамку по нужной части города.
+              {t("selectHintSub")}
             </p>
           </div>
         )}
@@ -291,9 +296,9 @@ function BBoxPanel() {
       >
         {isLoading
           ? jobStatus?.status === "queued"
-            ? "⏳ В очереди..."
-            : "Идёт анализ..."
-          : "Запустить анализ"}
+            ? t("queued")
+            : t("running")
+          : t("run")}
       </Button>
 
       <JobProgress
@@ -318,6 +323,7 @@ function BBoxPanel() {
 // ── Upload panel ────────────────────────────────────────────────────────────────
 
 function UploadPanel() {
+  const t = useTranslations("analysis");
   const { jobStatus, treeCount, setJobStatus } = useMapStore();
   const { isLoading, setIsLoading, wsMessages, setWsMessages, trackJob, resetJob } = useJobProgress();
 
@@ -381,9 +387,9 @@ function UploadPanel() {
             <FileImage className="h-[18px] w-[18px] text-cyan-200" />
           </div>
           <div>
-            <p className="text-sm font-medium text-foreground">Свой снимок</p>
+            <p className="text-sm font-medium text-foreground">{t("uploadTitle")}</p>
             <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
-              Этот режим не требует Yandex Static API: модель работает по загруженному изображению.
+              {t("uploadDesc")}
             </p>
           </div>
         </div>
@@ -414,12 +420,12 @@ function UploadPanel() {
             <p className="text-sm font-medium text-foreground truncate">{file.name}</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               {(file.size / 1024 / 1024).toFixed(1)} MB
-              {isGeoTiff && <span className="ml-2 text-primary">GeoTIFF — границы определяются автоматически</span>}
+              {isGeoTiff && <span className="ml-2 text-primary">{t("geotiffAuto")}</span>}
             </p>
           </div>
         ) : (
           <div>
-            <p className="text-sm text-muted-foreground">Перетащи изображение сюда или выбери файл</p>
+            <p className="text-sm text-muted-foreground">{t("dropHint")}</p>
             <p className="text-xs text-muted-foreground/60 mt-1">GeoTIFF, JPEG, PNG · до 500 MB</p>
           </div>
         )}
@@ -429,7 +435,7 @@ function UploadPanel() {
       {file && !isGeoTiff && (
         <div>
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-            Географические границы
+            {t("geoBounds")}
           </p>
           <div className="grid grid-cols-2 gap-2">
             {(["lonMin", "latMin", "lonMax", "latMax"] as const).map((key) => (
@@ -449,7 +455,7 @@ function UploadPanel() {
             ))}
           </div>
           <p className="text-xs text-muted-foreground/60 mt-1.5">
-            Подсказка: можно сначала выделить bbox на карте и перенести координаты сюда.
+            {t("geoBoundsHint")}
           </p>
         </div>
       )}
@@ -459,7 +465,7 @@ function UploadPanel() {
         disabled={!file || !bboxValid || isLoading}
         className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold"
       >
-        {isLoading ? "Обработка..." : "Найти деревья"}
+        {isLoading ? t("processing") : t("findTrees")}
       </Button>
 
       <JobProgress
@@ -484,6 +490,7 @@ function UploadPanel() {
 // ── Shared sub-components ───────────────────────────────────────────────────────
 
 function ApiRequirementNotice({ compact }: { compact?: boolean }) {
+  const t = useTranslations("analysis");
   return (
     <div className="rounded border border-amber-300/25 bg-amber-300/10 p-3">
       <div className="flex items-start gap-3">
@@ -491,11 +498,9 @@ function ApiRequirementNotice({ compact }: { compact?: boolean }) {
           <Satellite className="h-[18px] w-[18px] text-amber-200" />
         </div>
         <div className="min-w-0">
-          <p className="text-sm font-medium text-foreground">Нужен ключ спутниковых снимков</p>
+          <p className="text-sm font-medium text-foreground">{t("apiKeyTitle")}</p>
           <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
-            {compact
-              ? "Для анализа с карты backend скачивает тайлы через Yandex Maps Static API."
-              : "Подключи Yandex Maps Static API в кабинете разработчика и добавь ключ в backend/.env."}
+            {compact ? t("apiKeyCompact") : t("apiKeyFull")}
           </p>
           {!compact && (
             <code className="mt-2 block rounded border border-border bg-background/80 px-2 py-1.5 text-[11px] text-amber-100">
@@ -534,9 +539,10 @@ function JobProgress({
   wsMessages: string[];
   error?: string | null;
 }) {
+  const t = useTranslations("analysis");
   if (!isLoading && !isDone && !isFailed) return null;
 
-  const statusLabel = isDone ? "Готово" : isFailed ? "Ошибка" : `${progress}%`;
+  const statusLabel = isDone ? t("done") : isFailed ? t("error") : `${progress}%`;
   const latestMessage = wsMessages[wsMessages.length - 1];
 
   return (
@@ -550,7 +556,7 @@ function JobProgress({
           ) : (
             <Radar className="h-3.5 w-3.5 text-primary" />
           )}
-          Статус
+          {t("status")}
         </span>
         <Badge
           variant={isDone ? "default" : isFailed ? "destructive" : "secondary"}
@@ -565,12 +571,13 @@ function JobProgress({
           {latestMessage}
         </p>
       )}
-      {isFailed && <ApiErrorBlock message={error ?? latestMessage ?? "Не удалось выполнить анализ"} />}
+      {isFailed && <ApiErrorBlock message={error ?? latestMessage ?? t("failedError")} />}
     </div>
   );
 }
 
 function ApiErrorBlock({ message }: { message: string }) {
+  const t = useTranslations("analysis");
   const isForbidden =
     message.includes("403 Forbidden") ||
     message.includes("HTTP 403");
@@ -590,16 +597,16 @@ function ApiErrorBlock({ message }: { message: string }) {
         <div className="min-w-0">
           <p className="text-xs font-semibold text-foreground">
             {isForbidden
-              ? "Ключ imagery отклонён"
+              ? t("keyRejected")
               : isMissingProvider
-              ? "Imagery API не подключён"
-              : "Анализ остановлен"}
+              ? t("noImagery")
+              : t("stopped")}
           </p>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
             {isForbidden
-              ? "Yandex вернул 403. Проверь, что ключ активирован именно для Static API, ограничения ключа разрешают backend-запросы, и тариф допускает нужный тип карты."
+              ? t("keyRejectedDesc")
               : isMissingProvider
-              ? "Для анализа с карты нужен ключ Yandex Maps Static API. После добавления ключа перезапусти backend."
+              ? t("noImageryDesc")
               : message}
           </p>
         </div>
@@ -632,6 +639,7 @@ function normalizeJobStatus(status: string | undefined) {
 }
 
 function ZoneStats() {
+  const t = useTranslations("analysis");
   const { treeCount, canopyCoverage, selectedBBox, jobStatus } = useMapStore();
 
   const bboxArray = selectedBBox
@@ -655,13 +663,13 @@ function ZoneStats() {
   return (
     <div>
       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-        Results
+        {t("results")}
       </p>
       <div className="space-y-2">
-        <MetricCard label="Total Trees" value={treeCount.toLocaleString()} unit="detected" accent />
-        <MetricCard label="Canopy Coverage" value={`${canopyCoverage}%`} unit="of area" />
-        <MetricCard label="Density" value={density.toLocaleString()} unit="trees/km²" />
-        <MetricCard label="Analysis Date" value={analysisDate} unit="" />
+        <MetricCard label={t("totalTrees")} value={treeCount.toLocaleString()} unit={t("detected")} accent />
+        <MetricCard label={t("canopyCoverage")} value={`${canopyCoverage}%`} unit={t("ofArea")} />
+        <MetricCard label={t("density")} value={density.toLocaleString()} unit={t("treesPerKm")} />
+        <MetricCard label={t("analysisDate")} value={analysisDate} unit="" />
       </div>
     </div>
   );
