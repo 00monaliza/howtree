@@ -121,14 +121,14 @@ export default function DashboardPage() {
             <div className="p-3">
               <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground">
                 <MapPinned className="h-3.5 w-3.5" />
-                AOI
+                {t("aoi")}
               </div>
               <p className="text-sm font-semibold text-foreground">Astana</p>
             </div>
             <div className="p-3">
               <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground">
                 <ScanLine className="h-3.5 w-3.5" />
-                Mode
+                {t("mode")}
               </div>
               <p className="text-sm font-semibold text-foreground">BBOX</p>
             </div>

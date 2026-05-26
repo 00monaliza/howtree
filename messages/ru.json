@@ -64,7 +64,9 @@
     "confHigh": "≥ 90% — Высокая",
     "confMedHigh": "≥ 70% — Средне-высокая",
     "confMed": "≥ 50% — Средняя",
-    "confLow": "< 50% — Низкая"
+    "confLow": "< 50% — Низкая",
+    "aoi": "AOI",
+    "mode": "Режим"
   },
   "assistant": {
     "title": "AI-ассистент",
@@ -103,7 +105,12 @@
     "trees": "Деревья",
     "canopy": "Кроны",
     "confidence": "Уверенность",
-    "bbox": "Область"
+    "bbox": "Область",
+    "statusCompleted": "завершено",
+    "statusFailed": "ошибка",
+    "statusPending": "в очереди",
+    "statusQueued": "в очереди",
+    "statusRunning": "выполняется"
   },
   "reports": {
     "title": "Отчёты",

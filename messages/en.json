@@ -64,7 +64,9 @@
     "confHigh": "≥ 90% — High",
     "confMedHigh": "≥ 70% — Medium-high",
     "confMed": "≥ 50% — Medium",
-    "confLow": "< 50% — Low"
+    "confLow": "< 50% — Low",
+    "aoi": "AOI",
+    "mode": "Mode"
   },
   "assistant": {
     "title": "AI Assistant",
@@ -103,7 +105,12 @@
     "trees": "Trees",
     "canopy": "Canopy",
     "confidence": "Confidence",
-    "bbox": "BBox"
+    "bbox": "BBox",
+    "statusCompleted": "completed",
+    "statusFailed": "failed",
+    "statusPending": "pending",
+    "statusQueued": "queued",
+    "statusRunning": "running"
   },
   "reports": {
     "title": "Reports",

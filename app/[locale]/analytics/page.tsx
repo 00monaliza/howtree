@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
+import { useLocale } from "next-intl";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -67,6 +68,7 @@ function SummarySkeleton() {
 
 export default function AnalyticsPage() {
   const t = useTranslations("analytics");
+  const locale = useLocale();
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -168,12 +170,18 @@ export default function AnalyticsPage() {
                   <TableRow key={job.job_id} className="border-border hover:bg-secondary/30">
                     <TableCell className="text-xs text-muted-foreground">
                       {job.completed_at
-                        ? new Date(job.completed_at).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })
-                        : new Date(job.created_at).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}
+                        ? new Date(job.completed_at).toLocaleString(locale, { dateStyle: "short", timeStyle: "short" })
+                        : new Date(job.created_at).toLocaleString(locale, { dateStyle: "short", timeStyle: "short" })}
                     </TableCell>
                     <TableCell>
                       <Badge variant={statusVariant(job.status)} className="text-xs">
-                        {job.status}
+                        {({
+                          completed: t("statusCompleted"),
+                          failed: t("statusFailed"),
+                          pending: t("statusPending"),
+                          queued: t("statusQueued"),
+                          running: t("statusRunning"),
+                        } as Record<string, string>)[job.status] ?? job.status}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right text-sm tabular-nums text-foreground">

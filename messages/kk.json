@@ -64,7 +64,9 @@
     "confHigh": "≥ 90% — Жоғары",
     "confMedHigh": "≥ 70% — Орта-жоғары",
     "confMed": "≥ 50% — Орта",
-    "confLow": "< 50% — Төмен"
+    "confLow": "< 50% — Төмен",
+    "aoi": "AOI",
+    "mode": "Режим"
   },
   "assistant": {
     "title": "AI-көмекші",
@@ -103,7 +105,12 @@
     "trees": "Ағаштар",
     "canopy": "Жапырақ",
     "confidence": "Сенімділік",
-    "bbox": "Аймақ"
+    "bbox": "Аймақ",
+    "statusCompleted": "аяқталды",
+    "statusFailed": "қате",
+    "statusPending": "кезекте",
+    "statusQueued": "кезекте",
+    "statusRunning": "орындалуда"
   },
   "reports": {
     "title": "Есептер",

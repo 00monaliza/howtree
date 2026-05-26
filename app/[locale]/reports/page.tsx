@@ -178,7 +178,7 @@ export default function ReportsPage() {
                   { label: t("language"), value: "English" },
                   { label: t("standard"), value: "ISO 32000" },
                 ].map(({ label, value }) => (
-                  <div key={label} className="flex justify-between text-xs">
+                  <div key={value} className="flex justify-between text-xs">
                     <span className="text-muted-foreground">{label}</span>
                     <span className="text-foreground font-medium">{value}</span>
                   </div>
