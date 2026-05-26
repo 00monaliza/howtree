@@ -1,5 +1,9 @@
-import { redirect } from "@/lib/i18n/navigation";
+import { redirect } from "next/navigation";
 
-export default function LocaleRootPage() {
-  redirect("/dashboard");
+export default function LocaleRootPage({
+  params,
+}: {
+  params: { locale: string };
+}) {
+  redirect(`/${params.locale}/dashboard`);
 }
