@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useTranslations } from "next-intl";
 import {
   Bot, User, Send, Loader2, TreePine,
@@ -17,12 +17,12 @@ export function AssistantPanel() {
   const { treeCount, canopyCoverage, jobStatus } = useMapStore();
   const t = useTranslations("assistant");
 
-  const QUICK_PROMPTS = [
-    { icon: BarChart3, label: t("quickExplainLabel"),    text: t("quickExplainText") },
-    { icon: TreePine,  label: t("quickConfidenceLabel"), text: t("quickConfidenceText") },
-    { icon: Leaf,      label: t("quickDetectionLabel"),  text: t("quickDetectionText") },
-    { icon: HelpCircle,label: t("quickLimitsLabel"),     text: t("quickLimitsText") },
-  ];
+  const QUICK_PROMPTS = useMemo(() => [
+    { icon: BarChart3,  label: t("quickExplainLabel"),    text: t("quickExplainText") },
+    { icon: TreePine,   label: t("quickConfidenceLabel"), text: t("quickConfidenceText") },
+    { icon: Leaf,       label: t("quickDetectionLabel"),  text: t("quickDetectionText") },
+    { icon: HelpCircle, label: t("quickLimitsLabel"),     text: t("quickLimitsText") },
+  ], [t]);
 
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
