@@ -8,6 +8,7 @@ Design decisions:
 - Thread-safe: single model instance, GIL protects Python-level state.
   For true parallelism, use separate Celery workers (separate processes).
 """
+
 from __future__ import annotations
 
 import threading
@@ -50,8 +51,17 @@ def load_model():
 
             from deepforest import main as deepforest_main
 
-            model = deepforest_main.deepforest()
-            model.use_release()
+            # Автоматически определяем путь к файлу модели
+            model_path = Path(__file__).parent / "deepforest_urban_trees_FULL.pt"
+
+            if not model_path.exists():
+                logger.error("model_file_not_found", path=str(model_path))
+                raise FileNotFoundError(f"Кастомная модель не найдена по пути: {model_path}")
+
+            # ПРАВИЛЬНЫЙ ВЫЗОВ: через класс "deepforest", а не через экземпляр "deepforest()"
+            model = deepforest_main.deepforest.load_from_checkpoint(
+                checkpoint_path=str(model_path)
+            )
 
             # Force CPU evaluation mode
             model.model.eval()
@@ -86,7 +96,9 @@ def predict_tile(image_path: Path) -> pd.DataFrame:
             return_plot=False,
         )
     except Exception as exc:
-        logger.error("deepforest_inference_failed", path=str(image_path), error=str(exc))
+        logger.error(
+            "deepforest_inference_failed", path=str(image_path), error=str(exc)
+        )
         return pd.DataFrame(columns=["xmin", "ymin", "xmax", "ymax", "label", "score"])
 
     if result is None or result.empty:
