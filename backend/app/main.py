@@ -3,6 +3,7 @@ FastAPI application factory.
 """
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 
 import orjson
@@ -30,7 +31,22 @@ async def lifespan(app: FastAPI):
         async with async_engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
+    from app.modules.detection.yolo_detector import YoloDetector
+
+    # load YOLO model
+    detector = YoloDetector(settings.yolo_model_path)
+    try:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, detector.load)
+        app.state.yolo_model = detector
+        logger.info("yolo_model_ready", path=settings.yolo_model_path)
+    except Exception as exc:
+        logger.error("yolo_model_load_failed", error=str(exc))
+        app.state.yolo_model = None
+
     yield
+
+    app.state.yolo_model = None
 
     logger.info("shutdown")
     await async_engine.dispose()
