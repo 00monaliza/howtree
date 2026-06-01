@@ -105,5 +105,5 @@ async def test_image_resolution_reflects_tile_grid():
         )
         result = await svc.count_trees(SMALL_BBOX, zoom=18, confidence=0.25)
 
-    # 2 unique lons × 400 px, 2 unique lats × 400 px
-    assert result.image_resolution == [800, 800]
+    # 2 tiles × 400px with 10% overlap (settings default): 400 + 1*int(400*0.9) = 760 per axis
+    assert result.image_resolution == [760, 760]

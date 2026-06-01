@@ -10,13 +10,14 @@ import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.core.security import bbox_area_km2
 from app.modules.detection.deduplication import Detection, nms
 from app.modules.detection.tiler import TileDownloader, get_map_provider
-from app.modules.detection.yolo_detector import RawDetection, YoloDetector
+from app.modules.detection.yolo_detector import YoloDetector
 from app.modules.gis.coordinate_transform import TileSpec, bbox_to_tiles, pixel_to_geo
 
 settings = get_settings()
@@ -45,6 +46,13 @@ class _DetectionWithPixels(Detection):
     bbox_pixels: list[float] = field(default_factory=list)
 
 
+def _stitched_dim(n_tiles: int, tile_px: int, overlap: float) -> int:
+    """Total pixel dimension of a stitched tile strip, accounting for overlap."""
+    if n_tiles <= 1:
+        return tile_px
+    return tile_px + (n_tiles - 1) * int(tile_px * (1 - overlap))
+
+
 class YoloService:
     def __init__(self, model: YoloDetector) -> None:
         self._model = model
@@ -56,13 +64,24 @@ class YoloService:
         confidence: float,
     ) -> CountResult:
         """
-        Full pipeline: area check → tile grid → download → infer → NMS → return.
+        Full pipeline: validate → tile grid → download → infer → NMS → return.
 
         Raises:
-            ValueError: area > settings.yolo_max_bbox_area_km2
+            ValueError: bbox invalid or area > settings.yolo_max_bbox_area_km2
             RuntimeError: tile download failure
+
+        Note: if model inference fails silently on a tile (YoloDetector returns []),
+        that tile contributes zero detections. CountResult.tree_count=0 may indicate
+        either no trees found or a per-tile inference failure; check logs for
+        'yolo_inference_failed' events.
         """
         lon1, lat1, lon2, lat2 = bbox
+        if not (lon1 < lon2 and lat1 < lat2):
+            raise ValueError(
+                f"bbox coordinates must satisfy lon_min < lon_max and lat_min < lat_max, "
+                f"got [{lon1}, {lat1}, {lon2}, {lat2}]"
+            )
+
         area = bbox_area_km2(lon1, lat1, lon2, lat2)
         if area > settings.yolo_max_bbox_area_km2:
             raise ValueError(
@@ -79,19 +98,19 @@ class YoloService:
             overlap=settings.tile_overlap,
         )
 
-        unique_lons = {round(t.center_lon, 8) for t in tiles}
-        unique_lats = {round(t.center_lat, 8) for t in tiles}
+        n_cols = len({round(t.center_lon, 8) for t in tiles})
+        n_rows = len({round(t.center_lat, 8) for t in tiles})
         tile_w = tiles[0].width_px if tiles else settings.tile_size
         tile_h = tiles[0].height_px if tiles else settings.tile_size
         image_resolution = [
-            len(unique_lons) * tile_w,
-            len(unique_lats) * tile_h,
+            _stitched_dim(n_cols, tile_w, settings.tile_overlap),
+            _stitched_dim(n_rows, tile_h, settings.tile_overlap),
         ]
 
         provider = get_map_provider()
         downloader = TileDownloader(provider=provider)
-        loop = asyncio.get_event_loop()
-        all_detections: list[Detection] = []
+        loop = asyncio.get_running_loop()
+        all_detections: list[_DetectionWithPixels] = []
 
         with tempfile.TemporaryDirectory(prefix="yolo_tiles_") as tmpdir:
             work_dir = Path(tmpdir)
@@ -110,7 +129,7 @@ class YoloService:
             tree_count=len(deduped),
             detections=[
                 DetectionResult(
-                    bbox_pixels=d.bbox_pixels,  # type: ignore[attr-defined]
+                    bbox_pixels=cast(_DetectionWithPixels, d).bbox_pixels,
                     bbox_geo=[d.lon_min, d.lat_min, d.lon_max, d.lat_max],
                     confidence=d.confidence,
                 )
