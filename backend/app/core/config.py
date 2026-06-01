@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     detection_confidence_threshold: float = 0.4
     max_bbox_area_km2: float = 50.0  # safety limit per job
 
+    # ── YOLO Real-time ───────────────────────────────────────────
+    yolo_model_path: str = "../deepforest_urban_trees_FULL.pt"
+    yolo_confidence: float = 0.25
+    yolo_max_bbox_area_km2: float = 5.0
+
     # ── Celery ───────────────────────────────────────────────────
     celery_concurrency: int = 1
     celery_max_tasks_per_child: int = 10
