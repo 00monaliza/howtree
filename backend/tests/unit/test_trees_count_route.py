@@ -121,10 +121,12 @@ def test_count_runtime_error_returns_503(client, monkeypatch):
 # Test 4: model not loaded → 503
 # ---------------------------------------------------------------------------
 
-def test_count_model_not_loaded_returns_503():
-    app.state.yolo_model = None
+def test_count_model_not_loaded_returns_503(monkeypatch):
+    from app.main import app as fastapi_app
+    original = fastapi_app.state.yolo_model if hasattr(fastapi_app.state, "yolo_model") else None
+    fastapi_app.state.yolo_model = None
     try:
-        c = TestClient(app)
+        c = TestClient(fastapi_app)
         resp = c.post(
             "/api/v1/trees/count",
             json={"bbox": [71.40, 51.10, 71.50, 51.20]},
@@ -132,7 +134,7 @@ def test_count_model_not_loaded_returns_503():
         assert resp.status_code == 503
         assert "not available" in resp.text.lower()
     finally:
-        app.state.yolo_model = None
+        fastapi_app.state.yolo_model = original
 
 
 # ---------------------------------------------------------------------------
