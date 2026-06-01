@@ -58,7 +58,11 @@ class YoloDetector:
             from ultralytics import YOLO
 
             model = YOLO(str(self._model_path))
-            model.model.eval()
+            # .model is the underlying torch.nn.Module — valid for ultralytics >=8.0
+            try:
+                model.model.eval()
+            except AttributeError:
+                pass
 
             try:
                 blank = np.zeros((_WARMUP_PX, _WARMUP_PX, 3), dtype=np.uint8)
@@ -92,6 +96,22 @@ class YoloDetector:
                 conf=confidence,
                 verbose=False,
             )
+            detections: list[RawDetection] = []
+            for result in results:
+                if result.boxes is None:
+                    continue
+                for box in result.boxes:
+                    x1, y1, x2, y2 = box.xyxy[0]
+                    detections.append(
+                        RawDetection(
+                            x1=float(x1),
+                            y1=float(y1),
+                            x2=float(x2),
+                            y2=float(y2),
+                            confidence=float(box.conf[0]),
+                        )
+                    )
+            return detections
         except Exception as exc:
             logger.error(
                 "yolo_inference_failed",
@@ -99,20 +119,3 @@ class YoloDetector:
                 error=str(exc),
             )
             return []
-
-        detections: list[RawDetection] = []
-        for result in results:
-            if result.boxes is None:
-                continue
-            for box in result.boxes:
-                x1, y1, x2, y2 = box.xyxy[0]
-                detections.append(
-                    RawDetection(
-                        x1=float(x1),
-                        y1=float(y1),
-                        x2=float(x2),
-                        y2=float(y2),
-                        confidence=float(box.conf[0]),
-                    )
-                )
-        return detections

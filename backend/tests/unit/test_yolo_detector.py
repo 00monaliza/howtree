@@ -104,3 +104,60 @@ def test_predict_inference_error_returns_empty(fake_pt, tmp_path):
         d.load()
         results = d.predict(img)
     assert results == []
+
+
+def test_predict_result_parsing_error_returns_empty(fake_pt, tmp_path):
+    """Errors during box unpacking (e.g. tensor shape mismatch) return [] too."""
+    img = tmp_path / "tile.png"
+    img.write_bytes(b"x")
+    mock_result = MagicMock()
+    bad_box = MagicMock()
+    bad_box.xyxy = [[1.0, 2.0]]  # only 2 values — unpacking x1,y1,x2,y2 raises ValueError
+    bad_box.conf = [0.9]
+    mock_result.boxes = [bad_box]
+    mock_yolo = MagicMock()
+    mock_yolo.model = MagicMock()
+    mock_yolo.predict.return_value = [mock_result]
+    with patch("ultralytics.YOLO", return_value=mock_yolo):
+        d = YoloDetector(fake_pt)
+        d.load()
+        results = d.predict(img)
+    assert results == []
+
+
+def test_predict_boxes_none_skipped(fake_pt, tmp_path):
+    """result.boxes = None is skipped, not iterated."""
+    img = tmp_path / "tile.png"
+    img.write_bytes(b"x")
+    mock_result = MagicMock()
+    mock_result.boxes = None
+    mock_yolo = MagicMock()
+    mock_yolo.model = MagicMock()
+    mock_yolo.predict.return_value = [mock_result]
+    with patch("ultralytics.YOLO", return_value=mock_yolo):
+        d = YoloDetector(fake_pt)
+        d.load()
+        results = d.predict(img)
+    assert results == []
+
+
+def test_predict_forwards_confidence(fake_pt, tmp_path):
+    """The confidence argument is passed through to model.predict as conf=."""
+    img = tmp_path / "tile.png"
+    img.write_bytes(b"x")
+    mock_yolo = _mock_yolo_with_detections([])
+    with patch("ultralytics.YOLO", return_value=mock_yolo):
+        d = YoloDetector(fake_pt)
+        d.load()
+        d.predict(img, confidence=0.7)
+    calls = [c for c in mock_yolo.predict.call_args_list if c.kwargs.get("conf") == 0.7]
+    assert calls, "predict() was not called with conf=0.7"
+
+
+def test_load_constructor_raises_leaves_unloaded(fake_pt):
+    """If YOLO() constructor raises, is_loaded stays False."""
+    with patch("ultralytics.YOLO", side_effect=RuntimeError("bad weights")):
+        d = YoloDetector(fake_pt)
+        with pytest.raises(RuntimeError):
+            d.load()
+    assert not d.is_loaded
