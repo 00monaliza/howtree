@@ -1,9 +1,10 @@
-"""Unit tests for YoloDetector — ultralytics is mocked throughout."""
+"""Unit tests for YoloDetector — deepforest is mocked throughout."""
 from __future__ import annotations
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pandas as pd
 import pytest
 
 from app.modules.detection.yolo_detector import RawDetection, YoloDetector
@@ -16,20 +17,21 @@ def fake_pt(tmp_path) -> Path:
     return p
 
 
-def _mock_yolo_with_detections(dets: list[tuple[float, float, float, float, float]]):
-    """Build a mock YOLO instance that returns given (x1,y1,x2,y2,conf) detections."""
-    mock_result = MagicMock()
-    boxes = []
-    for x1, y1, x2, y2, conf in dets:
-        b = MagicMock()
-        b.xyxy = [[x1, y1, x2, y2]]
-        b.conf = [conf]
-        boxes.append(b)
-    mock_result.boxes = boxes
-    mock_instance = MagicMock()
-    mock_instance.model = MagicMock()
-    mock_instance.predict.return_value = [mock_result]
-    return mock_instance
+def _mock_model_with_detections(
+    dets: list[tuple[float, float, float, float, float]],
+) -> MagicMock:
+    """Build a mock deepforest model that returns given (xmin,ymin,xmax,ymax,score) rows."""
+    mock_model = MagicMock()
+    if dets:
+        df = pd.DataFrame(
+            dets, columns=["xmin", "ymin", "xmax", "ymax", "score"]
+        )
+        df["label"] = "Tree"
+    else:
+        df = pd.DataFrame(columns=["xmin", "ymin", "xmax", "ymax", "label", "score"])
+    mock_model.predict_image.return_value = df
+    mock_model.model = MagicMock()
+    return mock_model
 
 
 def test_not_loaded_initially(fake_pt):
@@ -50,27 +52,27 @@ def test_load_missing_file_raises():
 
 
 def test_load_sets_is_loaded(fake_pt):
-    mock_yolo = _mock_yolo_with_detections([])
-    with patch("ultralytics.YOLO", return_value=mock_yolo):
+    mock_model = _mock_model_with_detections([])
+    with patch("deepforest.main.deepforest.load_from_checkpoint", return_value=mock_model):
         d = YoloDetector(fake_pt)
         d.load()
     assert d.is_loaded
 
 
 def test_load_is_idempotent(fake_pt):
-    mock_yolo = _mock_yolo_with_detections([])
-    with patch("ultralytics.YOLO", return_value=mock_yolo) as MockYOLO:
+    mock_model = _mock_model_with_detections([])
+    with patch("deepforest.main.deepforest.load_from_checkpoint", return_value=mock_model) as mock_load:
         d = YoloDetector(fake_pt)
         d.load()
         d.load()
-    MockYOLO.assert_called_once()
+    mock_load.assert_called_once()
 
 
 def test_predict_returns_raw_detections(fake_pt, tmp_path):
     img = tmp_path / "tile.png"
     img.write_bytes(b"x")
-    mock_yolo = _mock_yolo_with_detections([(10.0, 20.0, 50.0, 60.0, 0.85)])
-    with patch("ultralytics.YOLO", return_value=mock_yolo):
+    mock_model = _mock_model_with_detections([(10.0, 20.0, 50.0, 60.0, 0.85)])
+    with patch("deepforest.main.deepforest.load_from_checkpoint", return_value=mock_model):
         d = YoloDetector(fake_pt)
         d.load()
         results = d.predict(img, confidence=0.5)
@@ -85,8 +87,22 @@ def test_predict_returns_raw_detections(fake_pt, tmp_path):
 def test_predict_empty_result(fake_pt, tmp_path):
     img = tmp_path / "tile.png"
     img.write_bytes(b"x")
-    mock_yolo = _mock_yolo_with_detections([])
-    with patch("ultralytics.YOLO", return_value=mock_yolo):
+    mock_model = _mock_model_with_detections([])
+    with patch("deepforest.main.deepforest.load_from_checkpoint", return_value=mock_model):
+        d = YoloDetector(fake_pt)
+        d.load()
+        results = d.predict(img)
+    assert results == []
+
+
+def test_predict_none_result_returns_empty(fake_pt, tmp_path):
+    """predict_image returning None yields empty list."""
+    img = tmp_path / "tile.png"
+    img.write_bytes(b"x")
+    mock_model = MagicMock()
+    mock_model.model = MagicMock()
+    mock_model.predict_image.return_value = None
+    with patch("deepforest.main.deepforest.load_from_checkpoint", return_value=mock_model):
         d = YoloDetector(fake_pt)
         d.load()
         results = d.predict(img)
@@ -96,67 +112,50 @@ def test_predict_empty_result(fake_pt, tmp_path):
 def test_predict_inference_error_returns_empty(fake_pt, tmp_path):
     img = tmp_path / "tile.png"
     img.write_bytes(b"x")
-    mock_yolo = MagicMock()
-    mock_yolo.model = MagicMock()
-    mock_yolo.predict.side_effect = RuntimeError("cuda error")
-    with patch("ultralytics.YOLO", return_value=mock_yolo):
+    mock_model = MagicMock()
+    mock_model.model = MagicMock()
+    mock_model.predict_image.side_effect = RuntimeError("cuda error")
+    with patch("deepforest.main.deepforest.load_from_checkpoint", return_value=mock_model):
         d = YoloDetector(fake_pt)
         d.load()
         results = d.predict(img)
     assert results == []
 
 
-def test_predict_result_parsing_error_returns_empty(fake_pt, tmp_path):
-    """Errors during box unpacking (e.g. tensor shape mismatch) return [] too."""
+def test_predict_filters_by_confidence(fake_pt, tmp_path):
+    """Only detections with score >= confidence are returned."""
     img = tmp_path / "tile.png"
     img.write_bytes(b"x")
-    mock_result = MagicMock()
-    bad_box = MagicMock()
-    bad_box.xyxy = [[1.0, 2.0]]  # only 2 values — unpacking x1,y1,x2,y2 raises ValueError
-    bad_box.conf = [0.9]
-    mock_result.boxes = [bad_box]
-    mock_yolo = MagicMock()
-    mock_yolo.model = MagicMock()
-    mock_yolo.predict.return_value = [mock_result]
-    with patch("ultralytics.YOLO", return_value=mock_yolo):
+    mock_model = _mock_model_with_detections([
+        (10.0, 20.0, 50.0, 60.0, 0.9),
+        (5.0, 5.0, 15.0, 15.0, 0.3),  # below threshold
+    ])
+    with patch("deepforest.main.deepforest.load_from_checkpoint", return_value=mock_model):
         d = YoloDetector(fake_pt)
         d.load()
-        results = d.predict(img)
-    assert results == []
-
-
-def test_predict_boxes_none_skipped(fake_pt, tmp_path):
-    """result.boxes = None is skipped, not iterated."""
-    img = tmp_path / "tile.png"
-    img.write_bytes(b"x")
-    mock_result = MagicMock()
-    mock_result.boxes = None
-    mock_yolo = MagicMock()
-    mock_yolo.model = MagicMock()
-    mock_yolo.predict.return_value = [mock_result]
-    with patch("ultralytics.YOLO", return_value=mock_yolo):
-        d = YoloDetector(fake_pt)
-        d.load()
-        results = d.predict(img)
-    assert results == []
+        results = d.predict(img, confidence=0.5)
+    assert len(results) == 1
+    assert results[0].confidence == 0.9
 
 
 def test_predict_forwards_confidence(fake_pt, tmp_path):
-    """The confidence argument is passed through to model.predict as conf=."""
+    """Detections below confidence threshold are filtered out."""
     img = tmp_path / "tile.png"
     img.write_bytes(b"x")
-    mock_yolo = _mock_yolo_with_detections([])
-    with patch("ultralytics.YOLO", return_value=mock_yolo):
+    mock_model = _mock_model_with_detections([(10.0, 20.0, 50.0, 60.0, 0.4)])
+    with patch("deepforest.main.deepforest.load_from_checkpoint", return_value=mock_model):
         d = YoloDetector(fake_pt)
         d.load()
-        d.predict(img, confidence=0.7)
-    calls = [c for c in mock_yolo.predict.call_args_list if c.kwargs.get("conf") == 0.7]
-    assert calls, "predict() was not called with conf=0.7"
+        results = d.predict(img, confidence=0.7)
+    assert results == []
 
 
 def test_load_constructor_raises_leaves_unloaded(fake_pt):
-    """If YOLO() constructor raises, is_loaded stays False."""
-    with patch("ultralytics.YOLO", side_effect=RuntimeError("bad weights")):
+    """If load_from_checkpoint raises, is_loaded stays False."""
+    with patch(
+        "deepforest.main.deepforest.load_from_checkpoint",
+        side_effect=RuntimeError("bad weights"),
+    ):
         d = YoloDetector(fake_pt)
         with pytest.raises(RuntimeError):
             d.load()

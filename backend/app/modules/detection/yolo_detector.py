@@ -1,5 +1,5 @@
 """
-YOLOv8 inference wrapper.
+DeepForest inference wrapper.
 
 Singleton per process — loaded once at FastAPI startup, reused per request.
 Thread-safe: double-checked locking on load(); predict() reads only.
@@ -11,13 +11,9 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-import numpy as np
-
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
-
-_WARMUP_PX = 64  # blank image side for warmup forward pass
 
 
 @dataclass
@@ -31,7 +27,7 @@ class RawDetection:
 
 
 class YoloDetector:
-    """Thread-safe YOLOv8 wrapper. Call load() once; predict() many times."""
+    """Thread-safe DeepForest wrapper. Call load() once; predict() many times."""
 
     def __init__(self, model_path: str | Path) -> None:
         self._model_path = Path(model_path)
@@ -43,32 +39,29 @@ class YoloDetector:
         return self._model is not None
 
     def load(self) -> None:
-        """Load model weights and run a warmup pass. Idempotent."""
+        """Load model weights from a DeepForest checkpoint. Idempotent."""
         if self._model is not None:
             return
         with self._lock:
             if self._model is not None:
                 return
             if not self._model_path.exists():
-                raise FileNotFoundError(f"YOLO model not found: {self._model_path}")
+                raise FileNotFoundError(f"Model not found: {self._model_path}")
 
             logger.info("yolo_loading", path=str(self._model_path))
             t0 = time.perf_counter()
 
-            from ultralytics import YOLO
+            import torch
+            torch.set_num_threads(4)
 
-            model = YOLO(str(self._model_path))
-            # .model is the underlying torch.nn.Module — valid for ultralytics >=8.0
-            try:
-                model.model.eval()
-            except AttributeError:
-                pass
+            from deepforest import main as deepforest_main
 
-            try:
-                blank = np.zeros((_WARMUP_PX, _WARMUP_PX, 3), dtype=np.uint8)
-                model.predict(source=blank, verbose=False, conf=0.25)
-            except Exception as warmup_exc:
-                logger.warning("yolo_warmup_failed", error=str(warmup_exc))
+            model = deepforest_main.deepforest.load_from_checkpoint(
+                str(self._model_path)
+            )
+            model.model.eval()
+            if hasattr(model.model, "cpu"):
+                model.model = model.model.cpu()
 
             self._model = model
             logger.info(
@@ -91,26 +84,24 @@ class YoloDetector:
             raise RuntimeError("Model not loaded. Call load() first.")
 
         try:
-            results = self._model.predict(
-                source=str(image_path),
-                conf=confidence,
-                verbose=False,
+            result = self._model.predict_image(
+                path=str(image_path),
+                return_plot=False,
             )
+            if result is None or result.empty:
+                return []
+
             detections: list[RawDetection] = []
-            for result in results:
-                if result.boxes is None:
-                    continue
-                for box in result.boxes:
-                    x1, y1, x2, y2 = box.xyxy[0]
-                    detections.append(
-                        RawDetection(
-                            x1=float(x1),
-                            y1=float(y1),
-                            x2=float(x2),
-                            y2=float(y2),
-                            confidence=float(box.conf[0]),
-                        )
+            for _, row in result[result["score"] >= confidence].iterrows():
+                detections.append(
+                    RawDetection(
+                        x1=float(row["xmin"]),
+                        y1=float(row["ymin"]),
+                        x2=float(row["xmax"]),
+                        y2=float(row["ymax"]),
+                        confidence=float(row["score"]),
                     )
+                )
             return detections
         except Exception as exc:
             logger.error(
