@@ -56,5 +56,7 @@ def _bbox_area_km2(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
         return abs(lon2 - lon1) * km_per_deg_lon * abs(lat2 - lat1) * km_per_deg_lat
 
 
-# Public alias — used by YoloService for per-request area validation
+# Public alias used by YoloService for per-request area validation.
+# Intentionally the same function as validate_bbox uses internally so both
+# enforce limits using the same measurement (UTM-projected km²).
 bbox_area_km2 = _bbox_area_km2
