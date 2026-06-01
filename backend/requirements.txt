@@ -36,6 +36,12 @@ numpy==1.26.4
 deepforest==1.4.1
 # PyTorch CPU — installed separately in Dockerfile
 
+# ML — YOLOv8 real-time inference
+ultralytics>=8.0.0
+
+# Tile coordinate utilities
+mercantile>=1.2.1
+
 # HTTP client (async tile download)
 httpx==0.28.1
 aiofiles==24.1.0
