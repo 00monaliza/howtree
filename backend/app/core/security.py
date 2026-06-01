@@ -54,3 +54,7 @@ def _bbox_area_km2(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
         km_per_deg_lat = 111.0
         km_per_deg_lon = 111.0 * abs(lat_deg) / 90.0
         return abs(lon2 - lon1) * km_per_deg_lon * abs(lat2 - lat1) * km_per_deg_lat
+
+
+# Public alias — used by YoloService for per-request area validation
+bbox_area_km2 = _bbox_area_km2
