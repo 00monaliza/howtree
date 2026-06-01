@@ -1,7 +1,7 @@
 """Pydantic schemas for POST /api/v1/trees/count."""
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Annotated, Any, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -16,7 +16,11 @@ class CountRequest(BaseModel):
     def resolve_input(self) -> "CountRequest":
         if self.bbox is None and self.geojson is None:
             raise ValueError("Provide either 'bbox' or 'geojson'")
-        if self.geojson is not None and self.bbox is None:
+        if self.bbox is not None and self.geojson is not None:
+            raise ValueError("Provide 'bbox' or 'geojson', not both")
+        if self.geojson is not None:
+            if self.geojson.get("type") != "Polygon":
+                raise ValueError("geojson must be a GeoJSON Polygon geometry")
             try:
                 coords = self.geojson["coordinates"][0]
                 lons = [c[0] for c in coords]
@@ -37,15 +41,19 @@ class CountRequest(BaseModel):
         return self
 
 
+_BBox = Annotated[list[float], Field(min_length=4, max_length=4)]
+_Resolution = Annotated[list[int], Field(min_length=2, max_length=2)]
+
+
 class DetectionOut(BaseModel):
-    bbox_pixels: list[float]   # [x1, y1, x2, y2] — tile-local pixel space
-    bbox_geo: list[float]      # [lon_min, lat_min, lon_max, lat_max]
-    confidence: float
+    bbox_pixels: _BBox                               # [x1, y1, x2, y2] tile-local
+    bbox_geo: _BBox                                  # [lon_min, lat_min, lon_max, lat_max]
+    confidence: float = Field(ge=0.0, le=1.0)
 
 
 class CountResponse(BaseModel):
     tree_count: int
     detections: list[DetectionOut]
     area_km2: float
-    inference_time_ms: int
-    image_resolution: list[int]  # [total_width_px, total_height_px] of tile grid
+    inference_time_ms: float                         # float to preserve sub-ms precision
+    image_resolution: _Resolution                    # [width_px, height_px]
