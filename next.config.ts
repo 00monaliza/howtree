@@ -7,7 +7,6 @@ const withNextIntl = createNextIntlPlugin('./lib/i18n/request.ts');
 const nextConfig = {
   turbopack: {},
   serverExternalPackages: ["@react-pdf/renderer"],
-  /* ваши остальные настройки, если будут */
 };
 
 export default withNextIntl(nextConfig);
