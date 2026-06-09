@@ -15,6 +15,15 @@ const ESRI_LABEL_TILES = [
   "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
 ];
 const OSM_TILES = ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"];
+const CARTO_DARK_TILES = [
+  "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+  "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+  "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+  "https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+];
+const STADIA_DARK_TILES = [
+  "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}.png",
+];
 
 function buildMapStyle(
   tileSource: TileSource,
@@ -42,6 +51,20 @@ function buildMapStyle(
       attribution: "© OpenStreetMap contributors",
       maxzoom: 19,
     },
+    "carto-dark": {
+      type: "raster",
+      tiles: CARTO_DARK_TILES,
+      tileSize: 256,
+      attribution: "© OpenStreetMap contributors © CARTO",
+      maxzoom: 19,
+    },
+    "stadia-dark": {
+      type: "raster",
+      tiles: STADIA_DARK_TILES,
+      tileSize: 256,
+      attribution: "© Stadia Maps © OpenMapTiles © OpenStreetMap contributors",
+      maxzoom: 20,
+    },
   };
 
   const layers: maplibregl.StyleSpecification["layers"] = [
@@ -63,6 +86,18 @@ function buildMapStyle(
       type: "raster",
       source: "osm",
       layout: { visibility: tileSource === "osm" ? "visible" : "none" },
+    },
+    {
+      id: "base-carto-dark",
+      type: "raster",
+      source: "carto-dark",
+      layout: { visibility: tileSource === "carto-dark" ? "visible" : "none" },
+    },
+    {
+      id: "base-stadia-dark",
+      type: "raster",
+      source: "stadia-dark",
+      layout: { visibility: tileSource === "stadia-dark" ? "visible" : "none" },
     },
   ];
 
@@ -97,6 +132,8 @@ const BASE_LAYERS: { id: string; src: TileSource }[] = [
   { id: "base-esri-labels", src: "esri" },
   { id: "base-osm", src: "osm" },
   { id: "base-mapbox", src: "mapbox" },
+  { id: "base-carto-dark", src: "carto-dark" },
+  { id: "base-stadia-dark", src: "stadia-dark" },
 ];
 
 const CONFIDENCE_COLORS: maplibregl.ExpressionSpecification = [
@@ -457,6 +494,25 @@ function addTreeLayers(map: maplibregl.Map) {
     data: { type: "FeatureCollection", features: [] },
   });
 
+  map.addSource("trees-polygons", {
+    type: "geojson",
+    data: { type: "FeatureCollection", features: [] },
+  });
+
+  map.addLayer({
+    id: "tree-polygon-fill",
+    type: "fill",
+    source: "trees-polygons",
+    paint: { "fill-color": "#22c55e", "fill-opacity": 0.18 },
+  });
+
+  map.addLayer({
+    id: "tree-polygon-outline",
+    type: "line",
+    source: "trees-polygons",
+    paint: { "line-color": "#22c55e", "line-width": 1.5, "line-opacity": 0.85 },
+  });
+
   map.addLayer({
     id: "tree-heatmap",
     type: "heatmap",
@@ -525,6 +581,24 @@ export function updateTreeSource(
   mapRegistry.forEach((map) => {
     if (!map || !map.isStyleLoaded()) return;
     const src = map.getSource("trees") as maplibregl.GeoJSONSource | undefined;
+    src?.setData(geojson);
+  });
+}
+
+export function updatePolygonSource(
+  geojson: GeoJSON.FeatureCollection,
+  bbox?: [number, number, number, number]
+) {
+  if (bbox) {
+    try {
+      localStorage.setItem(LAST_BBOX_KEY, JSON.stringify(bbox));
+    } catch {
+      // localStorage might be unavailable
+    }
+  }
+  mapRegistry.forEach((map) => {
+    if (!map || !map.isStyleLoaded()) return;
+    const src = map.getSource("trees-polygons") as maplibregl.GeoJSONSource | undefined;
     src?.setData(geojson);
   });
 }

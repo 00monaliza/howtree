@@ -46,6 +46,9 @@ next-env.d.ts
 *.pth
 *.onnx
 
+# Model weights directory — upload manually via scp (see README)
+backend/weights/
+
 # Training artifacts
 training/dataset/
 training/prepared/

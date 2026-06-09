@@ -16,7 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { useMapStore } from "@/lib/store/mapStore";
 import { api, createJobWebSocket } from "@/lib/api/client";
-import { updateTreeSource, flyMapToBbox } from "@/components/map/MapContainer";
+import { updateTreeSource, updatePolygonSource, flyMapToBbox } from "@/components/map/MapContainer";
 import type { WsMessage } from "@/types";
 import { area as turfArea, bboxPolygon } from "@turf/turf";
 import {
@@ -225,7 +225,7 @@ function useJobProgress() {
 
 function BBoxPanel() {
   const t = useTranslations("analysis");
-  const { selectedBBox, jobStatus, treeCount, setJobStatus } = useMapStore();
+  const { selectedBBox, jobStatus, treeCount, setJobStatus, setAnalysisResults } = useMapStore();
   const { isLoading, setIsLoading, wsMessages, setWsMessages, trackJob, resetJob } = useJobProgress();
 
   const bboxArray = selectedBBox
@@ -237,17 +237,27 @@ function BBoxPanel() {
   async function runAnalysis() {
     if (!bboxArray) return;
     setIsLoading(true);
-    setWsMessages([]);
+    setWsMessages([t("running")]);
     resetJob();
 
     try {
-      const { job_id } = await api.analyze(bboxArray);
-      await trackJob(job_id, bboxArray, (err) => {
-        setJobStatus({ status: "failed", progress: 0, error: formatApiError(err) });
-      });
+      const geojson = await api.predictBBox(bboxArray);
+      const count = geojson.features.length;
+      const bboxAreaM2 = turfArea(bboxPolygon(bboxArray));
+      let canopyM2 = 0;
+      for (const f of geojson.features) {
+        try { canopyM2 += turfArea(f as Parameters<typeof turfArea>[0]); } catch { /* skip degenerate polygons */ }
+      }
+      const coverage = Math.round((canopyM2 / bboxAreaM2) * 100 * 100) / 100;
+
+      updatePolygonSource(geojson, bboxArray);
+      setAnalysisResults(count, coverage);
+      setJobStatus({ status: "completed", progress: 100 });
+      flyMapToBbox(bboxArray[0], bboxArray[1], bboxArray[2], bboxArray[3]);
     } catch (err) {
       console.error(err);
       setJobStatus({ status: "failed", progress: 0, error: formatApiError(err) });
+    } finally {
       setIsLoading(false);
     }
   }
@@ -326,7 +336,7 @@ function BBoxPanel() {
 
 function UploadPanel() {
   const t = useTranslations("analysis");
-  const { jobStatus, treeCount, setJobStatus } = useMapStore();
+  const { jobStatus, treeCount, setJobStatus, setAnalysisResults } = useMapStore();
   const { isLoading, setIsLoading, wsMessages, setWsMessages, trackJob, resetJob } = useJobProgress();
 
   const [file, setFile] = useState<File | null>(null);
@@ -368,23 +378,32 @@ function UploadPanel() {
   async function runUpload() {
     if (!file) return;
     setIsLoading(true);
-    setWsMessages([]);
+    setWsMessages([t("running")]);
     resetJob();
 
     const lonMin = isGeoTiff ? 0 : parseFloat(bbox.lonMin);
     const latMin = isGeoTiff ? 0 : parseFloat(bbox.latMin);
     const lonMax = isGeoTiff ? 1 : parseFloat(bbox.lonMax);
     const latMax = isGeoTiff ? 1 : parseFloat(bbox.latMax);
+    const bboxArray: [number, number, number, number] = [lonMin, latMin, lonMax, latMax];
 
     try {
-      const { job_id } = await api.uploadImage(file, lonMin, latMin, lonMax, latMax);
-      const bboxArray: [number, number, number, number] = [lonMin, latMin, lonMax, latMax];
-      await trackJob(job_id, bboxArray, (err) => {
-        setJobStatus({ status: "failed", progress: 0, error: formatApiError(err) });
-      });
+      const geojson = await api.predictImage(file, lonMin, latMin, lonMax, latMax);
+      const count = geojson.features.length;
+      const bboxAreaM2 = turfArea(bboxPolygon(bboxArray));
+      let canopyM2 = 0;
+      for (const f of geojson.features) {
+        try { canopyM2 += turfArea(f as Parameters<typeof turfArea>[0]); } catch { /* skip degenerate polygons */ }
+      }
+      const coverage = Math.round((canopyM2 / bboxAreaM2) * 100 * 100) / 100;
+
+      updatePolygonSource(geojson, bboxArray);
+      setAnalysisResults(count, coverage);
+      setJobStatus({ status: "completed", progress: 100 });
     } catch (err) {
       console.error(err);
       setJobStatus({ status: "failed", progress: 0, error: formatApiError(err) });
+    } finally {
       setIsLoading(false);
     }
   }

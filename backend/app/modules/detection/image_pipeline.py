@@ -20,6 +20,7 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 
+import cv2
 import numpy as np
 from PIL import Image
 
@@ -177,7 +178,8 @@ def process_uploaded_image(
         emit(pct, f"Анализ тайла {i + 1}/{len(tiles)}")
 
         tile_path = tmp_dir / f"tile_{i:04d}.png"
-        tile_img.save(tile_path)
+        # Save as BGR so cv2.imread in detector.py reads correct channel order
+        cv2.imwrite(str(tile_path), cv2.cvtColor(np.array(tile_img), cv2.COLOR_RGB2BGR))
 
         df = predict_tile(tile_path)
         tile_path.unlink(missing_ok=True)

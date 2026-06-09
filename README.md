@@ -202,18 +202,59 @@ CORS_ORIGINS=["http://localhost:3000","http://localhost:3001"]
 
 ---
 
+## Deploying the Detectron2 Model Weights
+
+The trained Mask R-CNN model (`model_best.pth`, ~200 MB) is **not committed to git**. After cloning the repo on the server, place the weights manually:
+
+```bash
+# 1. Create the weights directory
+mkdir -p backend/weights
+
+# 2. Upload from your local machine
+scp /local/path/to/model_best.pth user@server:/path/to/howTree/backend/weights/model_best.pth
+
+# 3. Run the setup script (creates the dir, installs detectron2)
+bash backend/setup.sh
+```
+
+The direct inference server reads weights from `backend/weights/model_best.pth`. If the file is missing, the `/predict` and `/predict/bbox` endpoints return HTTP 503.
+
+### Starting the direct inference server (port 8001)
+
+```bash
+cd backend
+source .venv/bin/activate
+uvicorn api:app --port 8001 --host 0.0.0.0
+```
+
+Set `NEXT_PUBLIC_DIRECT_API_URL=http://your-server:8001` in the frontend `.env.local` if the server is remote.
+
+---
+
 ## API Endpoints
+
+### Main app (port 8000)
 
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/health` | Health check |
-| `POST` | `/analyze` | Synchronous tree detection (YOLO) |
-| `POST` | `/jobs` | Submit async analysis job |
-| `GET` | `/jobs/{id}` | Get job status and results |
-| `GET` | `/trees` | Query stored tree records |
-| `GET` | `/stats` | Detection statistics |
+| `POST` | `/api/v1/analyze` | Submit async analysis job |
+| `GET` | `/api/v1/jobs/{id}` | Get job status and results |
+| `GET` | `/api/v1/trees` | Query stored tree records |
+| `GET` | `/api/v1/stats` | Detection statistics |
 
 Interactive API docs: **http://localhost:8000/docs**
+
+### Direct inference server (port 8001)
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/predict` | Upload image → Detectron2 polygon GeoJSON |
+| `POST` | `/predict/bbox` | Bbox + tile source → Detectron2 polygon GeoJSON |
+| `POST` | `/detect/bbox` | Bbox + tile source → YOLO detection (legacy) |
+| `POST` | `/detect/image` | Image upload → YOLO detection (legacy) |
+
+Interactive docs: **http://localhost:8001/docs**
 
 ---
 

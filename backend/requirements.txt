@@ -37,6 +37,10 @@ deepforest==1.4.1
 albumentations<2.0.0  # deepforest 1.4.1 requires albumentations <2.0
 # PyTorch CPU — installed separately in Dockerfile
 
+# ML — Detectron2 Mask R-CNN (install manually; not on PyPI as a standard wheel)
+# pip install 'git+https://github.com/facebookresearch/detectron2.git'
+# Or see: https://detectron2.readthedocs.io/tutorials/install.html
+
 # Tile coordinate utilities
 mercantile>=1.2.1
 

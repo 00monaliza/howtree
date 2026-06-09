@@ -50,8 +50,11 @@ class MapProvider(Protocol):
 
 class EsriProvider:
     """
-    Esri World Imagery export endpoint. No API key required for this public
-    service, and it lets us request an image by geographic bbox and pixel size.
+    Esri World Imagery MapServer export endpoint.
+
+    Requests images in Web Mercator (imageSR=102100) so that pixel coordinates
+    match the Mercator-projected display on the frontend, eliminating the
+    ~1.59× vertical distortion that occurs at 51°N with geographic (4326) output.
     """
 
     BASE_URL = (
@@ -60,12 +63,13 @@ class EsriProvider:
     )
 
     def tile_url(self, tile: TileSpec) -> str:
+        # Bbox in WGS84 (bboxSR=4326); output image in Web Mercator (imageSR=102100)
         bbox = f"{tile.lon_min},{tile.lat_min},{tile.lon_max},{tile.lat_max}"
         return (
             f"{self.BASE_URL}"
             f"?bbox={bbox}"
             f"&bboxSR=4326"
-            f"&imageSR=4326"
+            f"&imageSR=102100"
             f"&size={tile.width_px},{tile.height_px}"
             f"&format=png"
             f"&f=image"

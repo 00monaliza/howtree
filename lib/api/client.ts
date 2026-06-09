@@ -3,6 +3,8 @@ import type { AnalysisJob, BBoxStats, JobListResponse, JobStatus, TreeGeoJSON, D
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const API = `${BASE}/api/v1`;
 
+const DIRECT_BASE = process.env.NEXT_PUBLIC_DIRECT_API_URL ?? "http://localhost:8001";
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API}${path}`, {
     headers: { "Content-Type": "application/json" },
@@ -81,6 +83,38 @@ export const api = {
   getBboxStats(bbox: [number, number, number, number]): Promise<BBoxStats> {
     const [lon1, lat1, lon2, lat2] = bbox;
     return request(`/stats/bbox?bbox=${lon1},${lat1},${lon2},${lat2}`);
+  },
+
+  async predictImage(
+    file: File,
+    lonMin: number,
+    latMin: number,
+    lonMax: number,
+    latMax: number,
+  ): Promise<GeoJSON.FeatureCollection> {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("lon_min", String(lonMin));
+    form.append("lat_min", String(latMin));
+    form.append("lon_max", String(lonMax));
+    form.append("lat_max", String(latMax));
+    const res = await fetch(`${DIRECT_BASE}/predict`, { method: "POST", body: form });
+    if (!res.ok) throw new Error(await readApiError(res));
+    return res.json() as Promise<GeoJSON.FeatureCollection>;
+  },
+
+  async predictBBox(
+    bbox: [number, number, number, number],
+    tileSource: "esri" | "mapbox" | "osm" = "esri",
+  ): Promise<GeoJSON.FeatureCollection> {
+    const [lon_min, lat_min, lon_max, lat_max] = bbox;
+    const res = await fetch(`${DIRECT_BASE}/predict/bbox`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lon_min, lat_min, lon_max, lat_max, tile_source: tileSource }),
+    });
+    if (!res.ok) throw new Error(await readApiError(res));
+    return res.json() as Promise<GeoJSON.FeatureCollection>;
   },
 };
 

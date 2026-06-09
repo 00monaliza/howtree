@@ -61,6 +61,12 @@ export function TileSourceSelector() {
             <SelectItem value="osm" className="text-xs">
               OpenStreetMap
             </SelectItem>
+            <SelectItem value="carto-dark" className="text-xs">
+              CartoDB Dark Matter
+            </SelectItem>
+            <SelectItem value="stadia-dark" className="text-xs">
+              Stadia Alidade Smooth Dark
+            </SelectItem>
           </SelectContent>
         </Select>
       </div>
