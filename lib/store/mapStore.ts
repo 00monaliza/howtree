@@ -40,7 +40,7 @@ export const useMapStore = create<MapState>((set) => ({
     center: [71.43, 51.18],
     zoom: 12,
   },
-  tileSource: "esri",
+  tileSource: "yandex",
 
   setSelectedBBox: (bbox) => set({ selectedBBox: bbox }),
   setActiveJob: (jobId) => set({ activeJob: jobId }),

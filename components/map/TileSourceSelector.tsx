@@ -67,6 +67,9 @@ export function TileSourceSelector() {
             <SelectItem value="stadia-dark" className="text-xs">
               Stadia Alidade Smooth Dark
             </SelectItem>
+            <SelectItem value="yandex" className="text-xs">
+              Яндекс Спутник
+            </SelectItem>
           </SelectContent>
         </Select>
       </div>

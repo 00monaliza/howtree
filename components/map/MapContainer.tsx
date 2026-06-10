@@ -24,6 +24,12 @@ const CARTO_DARK_TILES = [
 const STADIA_DARK_TILES = [
   "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}.png",
 ];
+const YANDEX_SAT_TILES = [
+  "https://sat01.maps.yandex.net/tiles?l=sat&x={x}&y={y}&z={z}",
+  "https://sat02.maps.yandex.net/tiles?l=sat&x={x}&y={y}&z={z}",
+  "https://sat03.maps.yandex.net/tiles?l=sat&x={x}&y={y}&z={z}",
+  "https://sat04.maps.yandex.net/tiles?l=sat&x={x}&y={y}&z={z}",
+];
 
 function buildMapStyle(
   tileSource: TileSource,
@@ -65,6 +71,13 @@ function buildMapStyle(
       attribution: "© Stadia Maps © OpenMapTiles © OpenStreetMap contributors",
       maxzoom: 20,
     },
+    "yandex-sat": {
+      type: "raster",
+      tiles: YANDEX_SAT_TILES,
+      tileSize: 256,
+      attribution: "© Яндекс",
+      maxzoom: 19,
+    },
   };
 
   const layers: maplibregl.StyleSpecification["layers"] = [
@@ -98,6 +111,12 @@ function buildMapStyle(
       type: "raster",
       source: "stadia-dark",
       layout: { visibility: tileSource === "stadia-dark" ? "visible" : "none" },
+    },
+    {
+      id: "base-yandex-sat",
+      type: "raster",
+      source: "yandex-sat",
+      layout: { visibility: tileSource === "yandex" ? "visible" : "none" },
     },
   ];
 
@@ -134,6 +153,7 @@ const BASE_LAYERS: { id: string; src: TileSource }[] = [
   { id: "base-mapbox", src: "mapbox" },
   { id: "base-carto-dark", src: "carto-dark" },
   { id: "base-stadia-dark", src: "stadia-dark" },
+  { id: "base-yandex-sat", src: "yandex" },
 ];
 
 const CONFIDENCE_COLORS: maplibregl.ExpressionSpecification = [
@@ -156,6 +176,7 @@ export function MapContainer() {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState>({ active: false, startLng: 0, startLat: 0 });
+  const lastLngLatRef = useRef<{ lng: number; lat: number } | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
   const [selectMode, setSelectMode] = useState(true);
   const [isMapReady, setIsMapReady] = useState(false);
@@ -297,6 +318,7 @@ export function MapContainer() {
   const onDrag = useCallback((e: maplibregl.MapMouseEvent) => {
     const map = mapRef.current;
     if (!map || !dragRef.current.active) return;
+    lastLngLatRef.current = { lng: e.lngLat.lng, lat: e.lngLat.lat };
     const { startLng, startLat } = dragRef.current;
     (map.getSource("selection-box") as maplibregl.GeoJSONSource)?.setData(
       buildBBoxPolygon(startLng, startLat, e.lngLat.lng, e.lngLat.lat)
@@ -335,12 +357,33 @@ export function MapContainer() {
     map.on("mousedown", startDrag);
     map.on("mousemove", onDrag);
     map.on("mouseup", endDrag);
+
+    // Fallback: if user releases mouse outside the map canvas, endDrag won't fire.
+    // Capture the window mouseup to still commit the selection.
+    const handleWindowMouseUp = () => {
+      if (!dragRef.current.active) return;
+      const lngLat = lastLngLatRef.current;
+      dragRef.current.active = false;
+      map.dragPan.enable();
+      if (!lngLat) return;
+      const { startLng, startLat } = dragRef.current;
+      if (Math.abs(lngLat.lng - startLng) < 0.0001 && Math.abs(lngLat.lat - startLat) < 0.0001) return;
+      setSelectedBBox({
+        lon1: Math.min(startLng, lngLat.lng),
+        lat1: Math.min(startLat, lngLat.lat),
+        lon2: Math.max(startLng, lngLat.lng),
+        lat2: Math.max(startLat, lngLat.lat),
+      });
+    };
+    window.addEventListener("mouseup", handleWindowMouseUp);
+
     return () => {
       map.off("mousedown", startDrag);
       map.off("mousemove", onDrag);
       map.off("mouseup", endDrag);
+      window.removeEventListener("mouseup", handleWindowMouseUp);
     };
-  }, [isMapReady, selectMode, startDrag, onDrag, endDrag]);
+  }, [isMapReady, selectMode, startDrag, onDrag, endDrag, setSelectedBBox]);
 
   // ── Keep selection rect in sync ─────────────────────────────────────────────
   useEffect(() => {

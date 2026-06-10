@@ -12,6 +12,7 @@ The downloader handles retries, timeout, and temp file management.
 from __future__ import annotations
 
 import asyncio
+import math
 import tempfile
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -78,26 +79,22 @@ class EsriProvider:
 
 class YandexProvider:
     """
-    Yandex Static Maps — satellite layer.
-    Documentation: https://yandex.com/dev/staticapi/
-    Best coverage for Kazakhstan / Central Asia.
+    Yandex satellite tiles via the public CDN (sat01-04.maps.yandex.net).
+    No API key required. Best coverage for Kazakhstan / Central Asia.
+    CDN tiles are 256×256; TileDownloader resizes to match TileSpec dimensions.
     """
 
-    BASE_URL = "https://static-maps.yandex.ru/1.x/"
-
-    def __init__(self, api_key: str) -> None:
-        self._api_key = api_key
+    def __init__(self, api_key: str = "") -> None:
+        # api_key retained for API compatibility but unused — CDN needs no auth
+        pass
 
     def tile_url(self, tile: TileSpec) -> str:
-        ll = f"{tile.center_lon:.6f},{tile.center_lat:.6f}"
-        return (
-            f"{self.BASE_URL}"
-            f"?ll={ll}"
-            f"&z={tile.zoom}"
-            f"&l=sat"
-            f"&size={tile.width_px},{tile.height_px}"
-            f"&apikey={self._api_key}"
-        )
+        z = tile.zoom
+        lat_r = math.radians(tile.center_lat)
+        x = int((tile.center_lon + 180) / 360 * (1 << z))
+        y = int((1 - math.log(math.tan(lat_r) + 1 / math.cos(lat_r)) / math.pi) / 2 * (1 << z))
+        server = (x + y) % 4 + 1  # round-robin across sat01–sat04
+        return f"https://sat0{server}.maps.yandex.net/tiles?l=sat&x={x}&y={y}&z={z}"
 
 
 class MapboxProvider:
@@ -179,6 +176,17 @@ class TileDownloader:
                 ) from exc
 
             dest.write_bytes(response.content)
+
+            # Resize if provider returned a different size than TileSpec expects
+            # (e.g. Yandex CDN always delivers 256×256)
+            if tile.width_px != 256 or tile.height_px != 256:
+                from PIL import Image
+                import io as _io
+                img = Image.open(_io.BytesIO(response.content)).convert("RGB")
+                if img.size != (tile.width_px, tile.height_px):
+                    img = img.resize((tile.width_px, tile.height_px), Image.LANCZOS)
+                    img.save(dest, format="PNG")
+
             return dest
 
     async def download_tiles(

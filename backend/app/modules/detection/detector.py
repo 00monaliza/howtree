@@ -1,105 +1,56 @@
 """
-Detectron2 Mask R-CNN inference wrapper.
+DeepForest inference wrapper for predict_tile().
 
-Uses the fine-tuned model_best.pth checkpoint with train_config.yaml.
-Exposes the same predict_tile() interface as the previous DeepForest wrapper.
+Delegates to YoloDetector (deepforest_urban_trees_FULL.pt) — a model
+trained specifically on aerial/satellite tree imagery that generalises
+well across different geographic regions and tile sources.
 """
 
 from __future__ import annotations
 
-import threading
 from pathlib import Path
 
-import cv2
-import numpy as np
 import pandas as pd
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
+from app.modules.detection.yolo_detector import YoloDetector
 
 logger = get_logger(__name__)
 settings = get_settings()
 
-_WEIGHTS_PATH = Path(__file__).parents[4] / "model_best.pth"
-_CONFIG_PATH = Path(__file__).parents[4] / "train_config.yaml"
+_MODEL_PATH = Path(settings.yolo_model_path)
+if not _MODEL_PATH.is_absolute():
+    _MODEL_PATH = (Path(__file__).parents[4] / settings.yolo_model_path).resolve()
 
-_model = None
-_model_lock = threading.Lock()
+_detector = YoloDetector(_MODEL_PATH)
 
 
-def load_model():
-    global _model
-
-    if _model is not None:
-        return _model
-
-    with _model_lock:
-        if _model is not None:
-            return _model
-
-        logger.info("detectron2_loading_model")
-        try:
-            import torch
-            torch.set_num_threads(4)
-
-            from detectron2.config import get_cfg
-            from detectron2.engine import DefaultPredictor
-
-            if not _WEIGHTS_PATH.exists():
-                raise FileNotFoundError(f"Веса модели не найдены: {_WEIGHTS_PATH}")
-            if not _CONFIG_PATH.exists():
-                raise FileNotFoundError(f"Конфиг модели не найден: {_CONFIG_PATH}")
-
-            cfg = get_cfg()
-            cfg.merge_from_file(str(_CONFIG_PATH))
-            cfg.MODEL.WEIGHTS = str(_WEIGHTS_PATH)
-            cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = settings.detection_confidence_threshold
-            cfg.MODEL.ROI_HEADS.NUM_CLASSES = 1
-            cfg.MODEL.DEVICE = "cpu"
-
-            _model = DefaultPredictor(cfg)
-            logger.info("detectron2_model_loaded")
-        except Exception as exc:
-            logger.error("detectron2_load_failed", error=str(exc))
-            raise
-
-    return _model
+def _ensure_loaded() -> None:
+    if not _detector.is_loaded:
+        _detector.load()
 
 
 def predict_tile(image_path: Path) -> pd.DataFrame:
     """
-    Run Detectron2 inference on a single tile image.
+    Run DeepForest inference on a single tile image.
 
     Returns DataFrame with columns: xmin, ymin, xmax, ymax, label, score
     """
-    predictor = load_model()
+    _ensure_loaded()
 
-    img = cv2.imread(str(image_path))
-    if img is None:
+    detections = _detector.predict(image_path, confidence=settings.detection_confidence_threshold)
+    if not detections:
         return pd.DataFrame(columns=["xmin", "ymin", "xmax", "ymax", "label", "score"])
 
-    try:
-        outputs = predictor(img)
-    except Exception as exc:
-        logger.error("detectron2_inference_failed", path=str(image_path), error=str(exc))
-        return pd.DataFrame(columns=["xmin", "ymin", "xmax", "ymax", "label", "score"])
-
-    instances = outputs["instances"].to("cpu")
-    if len(instances) == 0:
-        return pd.DataFrame(columns=["xmin", "ymin", "xmax", "ymax", "label", "score"])
-
-    boxes = instances.pred_boxes.tensor.numpy()
-    scores = instances.scores.numpy()
-
-    rows = []
-    for (x1, y1, x2, y2), score in zip(boxes, scores):
-        rows.append({
-            "xmin": float(x1),
-            "ymin": float(y1),
-            "xmax": float(x2),
-            "ymax": float(y2),
+    return pd.DataFrame([
+        {
+            "xmin": d.x1,
+            "ymin": d.y1,
+            "xmax": d.x2,
+            "ymax": d.y2,
             "label": "Tree",
-            "score": float(score),
-        })
-
-    return pd.DataFrame(rows)
+            "score": d.confidence,
+        }
+        for d in detections
+    ])

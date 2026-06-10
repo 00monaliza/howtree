@@ -225,7 +225,7 @@ function useJobProgress() {
 
 function BBoxPanel() {
   const t = useTranslations("analysis");
-  const { selectedBBox, jobStatus, treeCount, setJobStatus, setAnalysisResults } = useMapStore();
+  const { selectedBBox, jobStatus, treeCount, setJobStatus, setAnalysisResults, tileSource } = useMapStore();
   const { isLoading, setIsLoading, wsMessages, setWsMessages, trackJob, resetJob } = useJobProgress();
 
   const bboxArray = selectedBBox
@@ -241,7 +241,7 @@ function BBoxPanel() {
     resetJob();
 
     try {
-      const geojson = await api.predictBBox(bboxArray);
+      const geojson = await api.predictBBox(bboxArray, tileSource as "esri" | "mapbox" | "osm" | "yandex");
       const count = geojson.features.length;
       const bboxAreaM2 = turfArea(bboxPolygon(bboxArray));
       let canopyM2 = 0;
@@ -268,8 +268,6 @@ function BBoxPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <ApiRequirementNotice compact={Boolean(selectedBBox)} />
-
       <div>
         <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           <LocateFixed className="h-3.5 w-3.5" />

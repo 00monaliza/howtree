@@ -105,7 +105,7 @@ export const api = {
 
   async predictBBox(
     bbox: [number, number, number, number],
-    tileSource: "esri" | "mapbox" | "osm" = "esri",
+    tileSource: "esri" | "mapbox" | "osm" | "yandex" = "esri",
   ): Promise<GeoJSON.FeatureCollection> {
     const [lon_min, lat_min, lon_max, lat_max] = bbox;
     const res = await fetch(`${DIRECT_BASE}/predict/bbox`, {

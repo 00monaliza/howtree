@@ -20,7 +20,7 @@ from PIL import Image, ImageDraw
 from app.modules.detection.deduplication import Detection, nms
 from app.modules.detection.image_pipeline import process_uploaded_image
 from app.modules.detection.pipeline import _infer_tile
-from app.modules.detection.tiler import EsriProvider, MapboxProvider, TileDownloader
+from app.modules.detection.tiler import EsriProvider, MapboxProvider, YandexProvider, TileDownloader
 from app.modules.gis.coordinate_transform import bbox_to_tiles, pixel_to_geo
 from app.core.config import get_settings
 
@@ -49,9 +49,11 @@ class BBoxRequest(BaseModel):
     lat_min: float
     lon_max: float
     lat_max: float
-    tile_source: Literal["esri", "mapbox", "osm"] = "esri"
+    tile_source: Literal["esri", "mapbox", "osm", "yandex"] = "esri"
 
 def _provider_for_source(tile_source: str):
+    if tile_source == "yandex":
+        return YandexProvider(settings.yandex_maps_api_key or "")
     if tile_source == "mapbox" and settings.mapbox_token:
         return MapboxProvider(settings.mapbox_token)
     return EsriProvider()
@@ -260,15 +262,12 @@ async def predict_from_image(
     return {"type": "FeatureCollection", "features": features}
 
 
-# ── /predict/bbox: download tiles → stitch → GeoJSON polygons ───────────────────
+# ── /predict/bbox: download tiles → DeepForest → GeoJSON bboxes ──────────────────
 
 @app.post("/predict/bbox")
 async def predict_from_bbox(req: BBoxRequest):
-    """Download satellite tiles for a bbox, run Detectron2 on each, return GeoJSON polygons."""
-    try:
-        predictor = _get_predictor()
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
+    """Download satellite tiles for a bbox, run DeepForest on each, return GeoJSON polygons."""
+    from app.modules.detection.pipeline import _infer_tile
 
     provider = _provider_for_source(req.tile_source)
     tiles = bbox_to_tiles(
@@ -279,27 +278,32 @@ async def predict_from_bbox(req: BBoxRequest):
     )
     downloader = TileDownloader(provider=provider)
 
-    all_features: list[dict] = []
     loop = asyncio.get_event_loop()
+    all_features: list[dict] = []
 
     with tempfile.TemporaryDirectory(prefix="tree_predict_bbox_") as tmpdir:
         work_dir = Path(tmpdir)
         tile_paths = await downloader.download_tiles(tiles, work_dir)
 
+        from app.modules.detection.deduplication import nms as _nms
+        all_dets = []
         for tile, path in tile_paths:
-            img = cv2.imread(str(path))
-            if img is None:
-                continue
+            dets = await loop.run_in_executor(None, _infer_tile, tile, path)
+            all_dets.extend(dets)
 
-            outputs = await loop.run_in_executor(None, predictor, img)
-            instances = outputs["instances"].to("cpu")
+        final = _nms(all_dets, iou_threshold=0.3)
 
-            # XYZ tiles: use Mercator→WGS84 mapping via TileSpec
-            from app.modules.gis.coordinate_transform import pixel_to_geo as _p2g
-            def _px_to_geo(px: float, py: float, _t=tile) -> list[float]:
-                return list(_p2g(px, py, _t))
-
-            feats = _masks_to_geojson_features(instances, _px_to_geo)
-            all_features.extend(feats)
+        from app.modules.gis.coordinate_transform import pixel_to_geo as _p2g
+        for det in final:
+            all_features.append({
+                "type": "Feature",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[det.lon_min, det.lat_min], [det.lon_max, det.lat_min],
+                                     [det.lon_max, det.lat_max], [det.lon_min, det.lat_max],
+                                     [det.lon_min, det.lat_min]]],
+                },
+                "properties": {"confidence": det.confidence, "label": "tree"},
+            })
 
     return {"type": "FeatureCollection", "features": all_features}

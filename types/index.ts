@@ -94,4 +94,4 @@ export interface WsMessage {
 }
 
 export type MapLayer = "points" | "heatmap" | "districts";
-export type TileSource = "esri" | "mapbox" | "osm" | "carto-dark" | "stadia-dark";
+export type TileSource = "esri" | "mapbox" | "osm" | "carto-dark" | "stadia-dark" | "yandex";
