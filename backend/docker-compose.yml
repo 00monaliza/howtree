@@ -104,6 +104,7 @@ services:
       - ./app:/app/app:ro
       - tile_cache:/tmp/tree_tiles
       - model_cache:/root/.deepforest
+      - ../deepforest_urban_trees_FULL.pt:/app/deepforest_urban_trees_FULL.pt:ro
     deploy:
       resources:
         limits:

@@ -166,6 +166,10 @@ const CONFIDENCE_COLORS: maplibregl.ExpressionSpecification = [
 
 const LAST_BBOX_KEY = "howtree:last_bbox";
 
+// ── Pending data cache ─────────────────────────────────────────────────────
+let pendingTreeData: TreeGeoJSON | null = null;
+let pendingPolygonData: GeoJSON.FeatureCollection | null = null;
+
 interface DragState {
   active: boolean;
   startLng: number;
@@ -184,7 +188,6 @@ export function MapContainer() {
   const { setSelectedBBox, activeLayers, selectedBBox, setAnalysisResults, tileSource } =
     useMapStore();
 
-  // ── Auto-load last analysis on map mount ───────────────────────────────────
   const autoLoadTrees = useCallback(
     async (map: maplibregl.Map) => {
       try {
@@ -202,13 +205,12 @@ export function MapContainer() {
           setAnalysisResults(jobs[0].tree_count, 0);
         }
       } catch {
-        // Silently ignore — stale localStorage or API error
+        // Silently ignore
       }
     },
     [setAnalysisResults]
   );
 
-  // ── Map init ────────────────────────────────────────────────────────────────
   const initMap = useCallback(() => {
     if (!containerRef.current || mapRef.current) return;
 
@@ -242,7 +244,6 @@ export function MapContainer() {
     mapRef.current = map;
   }, [autoLoadTrees]);
 
-  // ── Tile source switching ───────────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !isMapReady) return;
@@ -253,7 +254,6 @@ export function MapContainer() {
     });
   }, [tileSource, isMapReady]);
 
-  // ── Tree click popup ────────────────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !isMapReady) return;
@@ -285,12 +285,8 @@ export function MapContainer() {
         .addTo(map);
     };
 
-    const onEnter = () => {
-      map.getCanvas().style.cursor = "pointer";
-    };
-    const onLeave = () => {
-      map.getCanvas().style.cursor = selectMode ? "crosshair" : "";
-    };
+    const onEnter = () => { map.getCanvas().style.cursor = "pointer"; };
+    const onLeave = () => { map.getCanvas().style.cursor = selectMode ? "crosshair" : ""; };
 
     map.on("click", "tree-points", onClick);
     map.on("mouseenter", "tree-points", onEnter);
@@ -303,7 +299,6 @@ export function MapContainer() {
     };
   }, [isMapReady, selectMode]);
 
-  // ── Drag-to-draw bbox ──────────────────────────────────────────────────────
   const startDrag = useCallback(
     (e: maplibregl.MapMouseEvent) => {
       if (!selectMode) return;
@@ -349,7 +344,6 @@ export function MapContainer() {
     [setSelectedBBox]
   );
 
-  // ── Wire drag events ────────────────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !isMapReady) return;
@@ -358,8 +352,6 @@ export function MapContainer() {
     map.on("mousemove", onDrag);
     map.on("mouseup", endDrag);
 
-    // Fallback: if user releases mouse outside the map canvas, endDrag won't fire.
-    // Capture the window mouseup to still commit the selection.
     const handleWindowMouseUp = () => {
       if (!dragRef.current.active) return;
       const lngLat = lastLngLatRef.current;
@@ -385,7 +377,6 @@ export function MapContainer() {
     };
   }, [isMapReady, selectMode, startDrag, onDrag, endDrag, setSelectedBBox]);
 
-  // ── Keep selection rect in sync ─────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
@@ -394,16 +385,15 @@ export function MapContainer() {
     src.setData(
       selectedBBox
         ? buildBBoxPolygon(
-            selectedBBox.lon1,
-            selectedBBox.lat1,
-            selectedBBox.lon2,
-            selectedBBox.lat2
-          )
+          selectedBBox.lon1,
+          selectedBBox.lat1,
+          selectedBBox.lon2,
+          selectedBBox.lat2
+        )
         : { type: "FeatureCollection", features: [] }
     );
   }, [selectedBBox]);
 
-  // ── Layer visibility ────────────────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
@@ -423,7 +413,6 @@ export function MapContainer() {
     }
   }, [activeLayers]);
 
-  // ── Mount / unmount ─────────────────────────────────────────────────────────
   useEffect(() => {
     initMap();
     return () => {
@@ -434,6 +423,24 @@ export function MapContainer() {
       setIsMapReady(false);
     };
   }, [initMap]);
+
+  // ── Применяем pending данные когда карта становится готовой ───────────────
+  useEffect(() => {
+    if (!isMapReady) return;
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (pendingTreeData) {
+      const src = map.getSource("trees") as maplibregl.GeoJSONSource | undefined;
+      src?.setData(pendingTreeData);
+      map.triggerRepaint();
+    }
+    if (pendingPolygonData) {
+      const src = map.getSource("trees-polygons") as maplibregl.GeoJSONSource | undefined;
+      src?.setData(pendingPolygonData);
+      map.triggerRepaint();
+    }
+  }, [isMapReady]);
 
   const clearSelection = () => {
     setSelectedBBox(null);
@@ -449,7 +456,6 @@ export function MapContainer() {
     <div className="relative w-full h-full">
       <div ref={containerRef} className="w-full h-full" />
 
-      {/* Toolbar */}
       <div className="absolute top-3 left-3 flex flex-col gap-1 z-10">
         <button
           onClick={() => setSelectMode((v) => !v)}
@@ -458,11 +464,10 @@ export function MapContainer() {
               ? "Режим выделения (перетащи чтобы выбрать зону)"
               : "Включить выделение"
           }
-          className={`w-9 h-9 rounded flex items-center justify-center text-base transition-colors shadow-md border ${
-            selectMode
-              ? "bg-primary text-primary-foreground border-primary"
-              : "bg-card text-muted-foreground border-border hover:text-foreground"
-          }`}
+          className={`w-9 h-9 rounded flex items-center justify-center text-base transition-colors shadow-md border ${selectMode
+            ? "bg-primary text-primary-foreground border-primary"
+            : "bg-card text-muted-foreground border-border hover:text-foreground"
+            }`}
         >
           ⬚
         </button>
@@ -477,7 +482,6 @@ export function MapContainer() {
         )}
       </div>
 
-      {/* Hint */}
       {selectMode && !selectedBBox && (
         <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-card/90 backdrop-blur border border-border rounded px-3 py-1.5 text-xs text-muted-foreground pointer-events-none whitespace-nowrap">
           Зажмите и потяните чтобы выбрать зону анализа
@@ -487,28 +491,21 @@ export function MapContainer() {
   );
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function buildBBoxPolygon(
-  lon1: number,
-  lat1: number,
-  lon2: number,
-  lat2: number
+  lon1: number, lat1: number, lon2: number, lat2: number
 ): GeoJSON.FeatureCollection {
   return {
     type: "FeatureCollection",
-    features: [
-      {
-        type: "Feature",
-        geometry: {
-          type: "Polygon",
-          coordinates: [
-            [[lon1, lat1], [lon2, lat1], [lon2, lat2], [lon1, lat2], [lon1, lat1]],
-          ],
-        },
-        properties: {},
+    features: [{
+      type: "Feature",
+      geometry: {
+        type: "Polygon",
+        coordinates: [[[lon1, lat1], [lon2, lat1], [lon2, lat2], [lon1, lat2], [lon1, lat1]]],
       },
-    ],
+      properties: {},
+    }],
   };
 }
 
@@ -536,26 +533,22 @@ function addTreeLayers(map: maplibregl.Map) {
     type: "geojson",
     data: { type: "FeatureCollection", features: [] },
   });
-
   map.addSource("trees-polygons", {
     type: "geojson",
     data: { type: "FeatureCollection", features: [] },
   });
-
   map.addLayer({
     id: "tree-polygon-fill",
     type: "fill",
     source: "trees-polygons",
     paint: { "fill-color": "#22c55e", "fill-opacity": 0.18 },
   });
-
   map.addLayer({
     id: "tree-polygon-outline",
     type: "line",
     source: "trees-polygons",
     paint: { "line-color": "#22c55e", "line-width": 1.5, "line-opacity": 0.85 },
   });
-
   map.addLayer({
     id: "tree-heatmap",
     type: "heatmap",
@@ -566,23 +559,16 @@ function addTreeLayers(map: maplibregl.Map) {
       "heatmap-weight": ["interpolate", ["linear"], ["get", "confidence"], 0, 0, 1, 1],
       "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 0, 1, 16, 3],
       "heatmap-color": [
-        "interpolate",
-        ["linear"],
-        ["heatmap-density"],
-        0,
-        "rgba(0,0,0,0)",
-        0.2,
-        "rgba(34,197,94,0.2)",
-        0.5,
-        "rgba(34,197,94,0.5)",
-        1,
-        "rgba(34,197,94,1)",
+        "interpolate", ["linear"], ["heatmap-density"],
+        0, "rgba(0,0,0,0)",
+        0.2, "rgba(34,197,94,0.2)",
+        0.5, "rgba(34,197,94,0.5)",
+        1, "rgba(34,197,94,1)",
       ],
       "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 0, 2, 16, 20],
       "heatmap-opacity": 0.8,
     },
   });
-
   map.addLayer({
     id: "tree-points",
     type: "circle",
@@ -599,11 +585,20 @@ function addTreeLayers(map: maplibregl.Map) {
   });
 }
 
-// ── Map registry ───────────────────────────────────────────────────────────────
+// ── Map registry ─────────────────────────────────────────────────────────────
 const mapRegistry = new Map<string, maplibregl.Map>();
 
 export function registerMap(id: string, map: maplibregl.Map) {
   mapRegistry.set(id, map);
+  // Применить pending данные если они были обновлены до готовности карты
+  if (pendingTreeData) {
+    const src = map.getSource("trees") as maplibregl.GeoJSONSource | undefined;
+    src?.setData(pendingTreeData);
+  }
+  if (pendingPolygonData) {
+    const src = map.getSource("trees-polygons") as maplibregl.GeoJSONSource | undefined;
+    src?.setData(pendingPolygonData);
+  }
 }
 
 export function deregisterMap(id: string) {
@@ -615,16 +610,14 @@ export function updateTreeSource(
   bbox?: [number, number, number, number]
 ) {
   if (bbox) {
-    try {
-      localStorage.setItem(LAST_BBOX_KEY, JSON.stringify(bbox));
-    } catch {
-      // localStorage might be unavailable
-    }
+    try { localStorage.setItem(LAST_BBOX_KEY, JSON.stringify(bbox)); } catch { }
   }
+  pendingTreeData = geojson;
   mapRegistry.forEach((map) => {
     if (!map || !map.isStyleLoaded()) return;
     const src = map.getSource("trees") as maplibregl.GeoJSONSource | undefined;
     src?.setData(geojson);
+    map.triggerRepaint();
   });
 }
 
@@ -633,24 +626,19 @@ export function updatePolygonSource(
   bbox?: [number, number, number, number]
 ) {
   if (bbox) {
-    try {
-      localStorage.setItem(LAST_BBOX_KEY, JSON.stringify(bbox));
-    } catch {
-      // localStorage might be unavailable
-    }
+    try { localStorage.setItem(LAST_BBOX_KEY, JSON.stringify(bbox)); } catch { }
   }
+  pendingPolygonData = geojson;
   mapRegistry.forEach((map) => {
     if (!map || !map.isStyleLoaded()) return;
     const src = map.getSource("trees-polygons") as maplibregl.GeoJSONSource | undefined;
     src?.setData(geojson);
+    map.triggerRepaint();
   });
 }
 
 export function flyMapToBbox(
-  lon1: number,
-  lat1: number,
-  lon2: number,
-  lat2: number
+  lon1: number, lat1: number, lon2: number, lat2: number
 ) {
   mapRegistry.forEach((map) => {
     map.fitBounds([[lon1, lat1], [lon2, lat2]], {

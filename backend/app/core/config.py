@@ -50,11 +50,11 @@ class Settings(BaseSettings):
     # ── Detection ────────────────────────────────────────────────
     tile_size: int = 400
     tile_overlap: float = 0.2
-    detection_confidence_threshold: float = 0.4
+    detection_confidence_threshold: float = 0.3
     max_bbox_area_km2: float = 50.0  # safety limit per job
 
     # ── YOLO Real-time ───────────────────────────────────────────
-    yolo_model_path: str = "../deepforest_urban_trees_FULL.pt"
+    yolo_model_path: str = "../deepforest_unified_astana.pt"
     yolo_confidence: float = 0.25
     yolo_max_bbox_area_km2: float = 5.0
 

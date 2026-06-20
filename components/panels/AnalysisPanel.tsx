@@ -74,11 +74,10 @@ function TabBtn({
   return (
     <button
       onClick={onClick}
-      className={`flex h-9 items-center justify-center gap-2 rounded text-xs font-semibold transition-colors ${
-        active
-          ? "bg-primary text-primary-foreground"
-          : "text-muted-foreground hover:bg-secondary hover:text-foreground"
-      }`}
+      className={`flex h-9 items-center justify-center gap-2 rounded text-xs font-semibold transition-colors ${active
+        ? "bg-primary text-primary-foreground"
+        : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+        }`}
     >
       <Icon className="h-4 w-4" />
       {label}
@@ -241,23 +240,13 @@ function BBoxPanel() {
     resetJob();
 
     try {
-      const geojson = await api.predictBBox(bboxArray, tileSource as "esri" | "mapbox" | "osm" | "yandex");
-      const count = geojson.features.length;
-      const bboxAreaM2 = turfArea(bboxPolygon(bboxArray));
-      let canopyM2 = 0;
-      for (const f of geojson.features) {
-        try { canopyM2 += turfArea(f as Parameters<typeof turfArea>[0]); } catch { /* skip degenerate polygons */ }
-      }
-      const coverage = Math.round((canopyM2 / bboxAreaM2) * 100 * 100) / 100;
-
-      updatePolygonSource(geojson, bboxArray);
-      setAnalysisResults(count, coverage);
-      setJobStatus({ status: "completed", progress: 100 });
-      flyMapToBbox(bboxArray[0], bboxArray[1], bboxArray[2], bboxArray[3]);
+      const { job_id } = await api.analyze(bboxArray);
+      await trackJob(job_id, bboxArray, (err) => {
+        setJobStatus({ status: "failed", progress: 0, error: formatApiError(err) });
+      });
     } catch (err) {
       console.error(err);
       setJobStatus({ status: "failed", progress: 0, error: formatApiError(err) });
-    } finally {
       setIsLoading(false);
     }
   }
@@ -431,13 +420,12 @@ function UploadPanel() {
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={onDrop}
-        className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${
-          dragOver
-            ? "border-primary bg-primary/5"
-            : file
+        className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${dragOver
+          ? "border-primary bg-primary/5"
+          : file
             ? "border-primary/50 bg-primary/5"
             : "border-border hover:border-muted-foreground/50"
-        }`}
+          }`}
       >
         <input
           ref={fileInputRef}
@@ -775,15 +763,15 @@ function ApiErrorBlock({ message }: { message: string }) {
             {isForbidden
               ? t("keyRejected")
               : isMissingProvider
-              ? t("noImagery")
-              : t("stopped")}
+                ? t("noImagery")
+                : t("stopped")}
           </p>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
             {isForbidden
               ? t("keyRejectedDesc")
               : isMissingProvider
-              ? t("noImageryDesc")
-              : message}
+                ? t("noImageryDesc")
+                : message}
           </p>
         </div>
       </div>

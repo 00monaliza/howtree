@@ -43,18 +43,13 @@ run_image_analysis_task = celery_app.task(
 
 @worker_process_init.connect
 def warm_up_model(**kwargs):
-    """
-    Load DeepForest model weights into memory when the worker process starts.
-    This runs once per worker process, not once per task.
-    """
     logger.info("worker_warming_up_model")
     try:
-        from app.modules.detection.detector import load_model
-        load_model()
+        from app.modules.detection.detector import _ensure_loaded
+        _ensure_loaded()
         logger.info("worker_model_ready")
     except Exception as exc:
         logger.error("worker_model_warmup_failed", error=str(exc))
-        # Don't crash the worker — let it handle per-task failure gracefully
 
 
 if __name__ == "__main__":

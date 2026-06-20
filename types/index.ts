@@ -11,15 +11,15 @@ export interface AnalysisJob {
 
 export interface JobStatus {
   status:
-    | "pending"
-    | "queued"
-    | "running"
-    | "downloading_tiles"
-    | "running_detection"
-    | "merging_results"
-    | "storing_results"
-    | "completed"
-    | "failed";
+  | "pending"
+  | "queued"
+  | "running"
+  | "downloading_tiles"
+  | "running_detection"
+  | "merging_results"
+  | "storing_results"
+  | "completed"
+  | "failed";
   progress: number;
   stage?: string | null;
   tree_count?: number | null;
